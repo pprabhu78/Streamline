@@ -23,6 +23,8 @@
 #pragma once
 
 #include <map>
+#include <unordered_set>
+#include <shared_mutex>
 
 #include "include/sl.h"
 #include "include/sl_helpers.h"
@@ -54,6 +56,24 @@ enum NVSDK_NGX_Feature;
 
 namespace sl
 {
+    struct BufferTagInfo
+    {
+        uint32_t viewportId{};
+        BufferType type{};
+        ResourceLifecycle lifecycle{};
+
+        inline bool operator==(const BufferTagInfo& rhs) const {
+            return viewportId == rhs.viewportId && type == rhs.type && lifecycle == rhs.lifecycle;
+        }
+    };
+
+    struct BufferTagInfoHash
+    {
+        size_t operator()(const BufferTagInfo& info) const
+        {
+            return (size_t(info.viewportId) << 48) | (size_t(info.type) << 32) | size_t(info.lifecycle);
+        }
+    };
 
 namespace chi
 {
@@ -61,10 +81,16 @@ using CommandList = void*;
 class ICompute;
 }
 
+namespace common
+{
+    struct ResourceTaggingGeneral;
+    struct ResourceTaggingForFrame;
+}
+
 struct CommonResource
 {
-    friend sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32_t id, const Extent* ext, ResourceLifecycle lifecycle, CommandBuffer* cmdBuffer, bool localTag, const PrecisionInfo* pi);
-    friend void getCommonTag(BufferType tagType, uint32_t id, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs);
+    friend common::ResourceTaggingGeneral;
+    friend common::ResourceTaggingForFrame;
 
     inline operator bool() { return clone || res.native != nullptr; }
     inline operator bool() const { return clone || res.native != nullptr; }
@@ -112,9 +138,9 @@ private:
     chi::HashedResource clone{};
 };
 
-using PFunGetTag = void(BufferType tag, uint32_t id, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs);
+using PFunGetTag = void(BufferType tag, uint32_t frameId, uint32_t id, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs, bool optional);
 
-inline Result getTaggedResource(BufferType tagType, CommonResource& res, uint32_t id, bool optional = false, const sl::BaseStructure** inputs = nullptr, uint32_t numInputs = 0)
+inline Result getTaggedResource(BufferType tagType, CommonResource& res, uint32_t frameId, uint32_t viewportId, bool optional = false, const sl::BaseStructure** inputs = nullptr, uint32_t numInputs = 0)
 {
     res = {};
 
@@ -124,7 +150,7 @@ inline Result getTaggedResource(BufferType tagType, CommonResource& res, uint32_
         param::getPointerParam(api::getContext()->parameters, sl::param::global::kPFunGetTag, &getTagThreadSafe);
     }
     // Always returns an instance of common resource even if invalid (not provided by host, all values null)
-    getTagThreadSafe(tagType, id, res, inputs, numInputs);
+    getTagThreadSafe(tagType, frameId, viewportId, res, inputs, numInputs, optional);
     if (!res && !optional)
     {
         SL_LOG_ERROR("Failed to find global tag '%s', please make sure to tag all required buffers", getBufferTypeAsStr(tagType));
@@ -502,6 +528,102 @@ private:
     std::string m_name = {};
     std::mutex m_mutex = {};
     std::map<uint32_t, IndexedFrameData> m_list = {};
+};
+
+struct ResourceTaggingBase
+{
+    // Legacy resource-tagging API (slSetTag) implementation replaces existing tag only when a new tag of same type arrives which is incorrect
+    // as tag lifecycle validity is only until the end of Present for that frame and client is expected to set tags every frame.
+    // Tags can be local or global and can even be set during slEvaluateFeature without using explicit API for that.
+    // Further slEvaluateFeature API is frame-aware, even though legacy API didn't associate tags with frames whereas new API is supposed to.
+    // Also, this API sets and retrieves tags in the same call and client may not even invoke explicit tagging API (slSetTag) or invoke
+    // both these APIs in any order making it difficult to detect when to do frame-based tracking of resources.
+    // Since consolidating the bug-ridden legacy resource tagging implementation with the new frame-aware one can add complexity and difficulty
+    // in maintainabilty, isolating the legacy one from the new for now for simplicity and maintainability.
+    virtual sl::Result setTag(const sl::Resource* resource,
+        BufferType,
+        uint32_t,
+        const Extent*,
+        ResourceLifecycle,
+        CommandBuffer*,
+        bool,
+        const PrecisionInfo*,
+        const sl::FrameToken&) = 0;
+    virtual void getTag(BufferType,
+        uint32_t,
+        uint32_t,
+        CommonResource&,
+        const sl::BaseStructure**,
+        uint32_t,
+        bool) = 0;
+
+protected:
+    std::unordered_set<BufferTagInfo, BufferTagInfoHash> requiredTags{};
+};
+
+struct ResourceTaggingGeneral : public ResourceTaggingBase
+{
+    virtual sl::Result setTag(const sl::Resource* resource,
+        BufferType tag,
+        uint32_t id,
+        const Extent* ext,
+        ResourceLifecycle lifecycle,
+        CommandBuffer* cmdBuffer,
+        bool localTag,
+        const PrecisionInfo* pi,
+        const sl::FrameToken& frame) override final;
+    virtual void getTag(BufferType tagType,
+        uint32_t frameId,
+        uint32_t viewportId,
+        CommonResource& res,
+        const sl::BaseStructure** inputs,
+        uint32_t numInputs,
+        bool optional) override final;
+
+    ~ResourceTaggingGeneral();
+
+private:
+    std::map<uint64_t, CommonResource> idToResourceMap;
+    std::mutex resourceTagMutex{};
+};
+
+struct ProtectedResourceTagContainer
+{
+    std::unordered_map<uint64_t, CommonResource> resourceTagContainer;
+    std::shared_timed_mutex resourceTagContainerMutex{};
+};
+
+struct ResourceTaggingForFrame : public ResourceTaggingBase
+{
+    virtual sl::Result setTag(const sl::Resource* resource,
+        BufferType tag,
+        uint32_t id,
+        const Extent* ext,
+        ResourceLifecycle lifecycle,
+        CommandBuffer* cmdBuffer,
+        bool localTag,
+        const PrecisionInfo* pi,
+        const sl::FrameToken& frame) override final;
+    virtual void getTag(BufferType tagType,
+        uint32_t frameId,
+        uint32_t viewportId,
+        CommonResource& res,
+        const sl::BaseStructure** inputs,
+        uint32_t numInputs,
+        bool optional) override final;
+
+    void recycleTags();
+
+    ~ResourceTaggingForFrame();
+
+private:
+    std::mutex requiredTagMutex{};
+    // frame-aware nested container of resources for each type of input resource tagged
+    std::map<uint32_t, ProtectedResourceTagContainer> frameResourceTagMap{};
+    std::shared_timed_mutex frameResourceTagMapMutex{};
+    uint32_t maxTagSetFrameId{};
+    std::atomic<uint32_t> presentFrameId{};
+    std::atomic<bool> skippedPresent{ false };
 };
 
 }

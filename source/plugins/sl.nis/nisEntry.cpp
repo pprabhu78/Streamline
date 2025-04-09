@@ -258,8 +258,8 @@ Result nisEndEvaluation(chi::CommandList cmdList, const common::EventData& data,
     CommonResource colorIn{};
     CommonResource colorOut{};
     
-    SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, id, false, inputs, numInputs));
-    SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, id, false, inputs, numInputs));
+    SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, data.frame, id, false, inputs, numInputs));
+    SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, data.frame, id, false, inputs, numInputs));
     
     auto inExtent = colorIn.getExtent();
     auto outExtent = colorOut.getExtent();

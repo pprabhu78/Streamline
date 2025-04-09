@@ -1,3 +1,36 @@
+======== Release 2.7.30 Entries ========
+
+    * Added support for `slSetTagForFrame()` which allows for frame-based
+      tagging of resources.
+      See section 2.9 of `ProgrammingGuide.md` "TAGGING RESOURCES" for more inforamtion.
+
+    * Deprecated support for `slSetTag()`. Use `slSetTagForFrame()` instead.
+      See section 2.9 of `ProgrammingGuide.md` "TAGGING RESOURCES" for more inforamtion.
+
+    * Added support for an additional DLSS Super Resolution Transformer Model (BETA)
+      Available as `sl::DLSSPreset::ePresetK`.
+
+    * Fixed a bug in `sl.dlss_g` where DLSS-G was marked as unsupported when
+      used with image format `VK_FORMAT_A2B10G10R10_UNORM_PACK32`.
+
+    * Fixed a race condition in `sl.dlss_g` when enabling either `sl.dlss` or
+      `sl.dlss_d` simultaneously, which could result in graphical corruption and
+      degraded performance.
+
+    * Fixed a bug in `sl.dlss_g` where calling `slFreeResources()` was called in
+      multi-swapchain applications would result in a crash.
+
+    * Fixed a bug in `sl.dlss_g` leading to D3D12 Validation
+      `RESOURCE_MANIPULATION ERROR #527 RESOURCE_BARRIER_BEFORE_AFTER_MISMATCH`.
+
+    * Fixed a bug in `sl.dlss_g` where enabling the debug visualization would
+      result in a crash.
+
+    * Fixed a bug in `sl.common` which caused a memory leak in D3D11
+      applications.
+
+    * Added additional documentation for DLSS-SR and DLSS-RR to the `docs` directory.
+
 ======== Release 2.7.2 Entries ========
 
     * Added support for DLSS Ray Reconstruction Transformer Model

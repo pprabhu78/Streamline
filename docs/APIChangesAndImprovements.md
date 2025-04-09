@@ -95,6 +95,9 @@ Streamline 2.0 **includes all the above mentioned v1.5 changes with the followin
 * `slSetTag` API has been expanded to include command list and resource life-cycle information.
 * If needed resources are automatically copied internally by SL.
 * `slEvaluateFeature` can be used to tag resources locally (tags only valid for the specific evaluate call, see programming guide for details)
+* A new sl::PreferenceFlags flag `eUseFrameBasedResourceTagging` has been introduced which must be set to enforce frame-based resource tagging using SL APIs `slSetTagForFrame` and `slEvaluateFeature`.
+* API `slSetTag` is deprecated and is no longer recommended to be used.
+* A new API `slSetTagForFrame` has been introduced passing in frame-token to tag resources for a specific frame, i.e. associated with a frame index facilitating tagging for multiple frames in flight on CPU at the same time. This deprecates the API `slSetTag` and cannot be used with the new API `slSetTagForFrame`.
 
 ### FRAME ID
 

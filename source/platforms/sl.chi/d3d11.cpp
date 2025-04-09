@@ -460,6 +460,9 @@ ComputeStatus D3D11::init(Device InDevice, param::IParameters* params)
 
 ComputeStatus D3D11::shutdown()
 {
+    CHI_CHECK(destroyKernel(m_copyKernel));
+    m_copyKernel = {};
+
     m_context = {};
     SL_SAFE_RELEASE(m_immediateContext);
     SL_SAFE_RELEASE(m_device5);
@@ -482,20 +485,14 @@ ComputeStatus D3D11::shutdown()
 
     clearCache();
 
-    ComputeStatus Res = ComputeStatus::eOk;
     for (auto& k : m_kernels)
     {
         auto kernel = (KernelDataD3D11*)k.second;
-        for(auto& cb : kernel->constBuffers)
-        { 
-            SL_SAFE_RELEASE(cb.second);
-        }
-        kernel->constBuffers.clear();
-
         SL_LOG_VERBOSE("Destroying kernel %s", kernel->name.c_str());
-        SL_SAFE_RELEASE(kernel->shader);
+        kernel->destroy();
         delete kernel;
     }
+    m_kernels.clear();
 
     return Generic::shutdown();
 }
@@ -621,8 +618,9 @@ ComputeStatus D3D11::destroyKernel(Kernel& InKernel)
     {
         return ComputeStatus::eInvalidCall;
     }
-    KernelDataD3D11* data = (KernelDataD3D11*)(it->second);
-    SL_LOG_VERBOSE("Destroying kernel %s", data->name.c_str());
+    KernelDataD3D11* kernel = (KernelDataD3D11*)(it->second);
+    SL_LOG_VERBOSE("Destroying kernel %s", kernel->name.c_str());
+    kernel->destroy();
     delete it->second;
     m_kernels.erase(it);
     InKernel = {};
@@ -1686,6 +1684,12 @@ ComputeStatus D3D11::endProfiling(CommandList cmdList)
     return ComputeStatus::eError;
 }
 
+ bool D3D11::signalCPUFence(Fence fence, uint64_t syncValue)
+{
+    assert(false);
+    SL_LOG_ERROR("Not implemented");
+    return false;
+}
 
 int D3D11::destroyResourceDeferredImpl(const Resource resource)
 {
@@ -1876,5 +1880,14 @@ ComputeStatus D3D11::prepareTranslatedResources(CommandList cmdList, const std::
     return ComputeStatus::eOk;
 }
 
+void KernelDataD3D11::destroy()
+{
+    for(auto& cb : constBuffers)
+    { 
+        SL_SAFE_RELEASE(cb.second);
+    }
+    constBuffers.clear();
+    SL_SAFE_RELEASE(shader);
+}
 }
 }

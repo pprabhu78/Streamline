@@ -241,7 +241,7 @@ Result deepDVCEndEvaluation(chi::CommandList cmdList, const common::EventData& d
 
     CommonResource outColor{};
     
-    SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, outColor, id));
+    SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, outColor, data.frame, id));
     
     auto outExtent = outColor.getExtent();
     ctx.cacheState(outColor, outColor.getState());

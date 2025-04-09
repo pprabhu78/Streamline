@@ -40,9 +40,17 @@ typedef enum NVSDK_NGX_RayReconstruction_Hint_Render_Preset
     NVSDK_NGX_RayReconstruction_Hint_Render_Preset_B,
     NVSDK_NGX_RayReconstruction_Hint_Render_Preset_C,
     NVSDK_NGX_RayReconstruction_Hint_Render_Preset_D,
-    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_E,
-    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_F,
-    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_G,
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_E,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_F,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_G,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_H,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_I,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_J,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_K,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_L,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_M,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_N,           // do not use, reverts to default behavior
+    NVSDK_NGX_RayReconstruction_Hint_Render_Preset_O,           // do not use, reverts to default behavior
 } NVSDK_NGX_RayReconstruction_Hint_Render_Preset;
 
 #define NVSDK_NGX_Parameter_DLSS_Denoise_Mode "DLSS.Denoise.Mode"
@@ -86,6 +94,12 @@ typedef enum NVSDK_NGX_RayReconstruction_Hint_Render_Preset
 #define NVSDK_NGX_Parameter_DLSSD_SpecularRayDirection "DLSSD.SpecularRayDirection"
 #define NVSDK_NGX_Parameter_DLSSD_DiffuseRayDirectionHitDistance "DLSSD.DiffuseRayDirectionHitDistance"
 #define NVSDK_NGX_Parameter_DLSSD_SpecularRayDirectionHitDistance "DLSSD.SpecularRayDirectionHitDistance"
+#define NVSDK_NGX_Parameter_DLSSD_Alpha "DLSSD.Alpha"
+#define NVSDK_NGX_Parameter_DLSSD_OutputAlpha "DLSSD.OutputAlpha"
+#define NVSDK_NGX_Parameter_DLSSD_Alpha_Subrect_Base_X "DLSSD.Alpha.Subrect.Base.X"
+#define NVSDK_NGX_Parameter_DLSSD_Alpha_Subrect_Base_Y "DLSSD.Alpha.Subrect.Base.Y"
+#define NVSDK_NGX_Parameter_DLSSD_OutputAlpha_Subrect_Base_X "DLSSD.OutputAlpha.Subrect.Base.X"
+#define NVSDK_NGX_Parameter_DLSSD_OutputAlpha_Subrect_Base_Y "DLSSD.OutputAlpha.Subrect.Base.Y"
 #define NVSDK_NGX_Parameter_DLSSD_ReflectedAlbedo_Subrect_Base_X "DLSSD.ReflectedAlbedo.Subrect.Base.X"
 #define NVSDK_NGX_Parameter_DLSSD_ReflectedAlbedo_Subrect_Base_Y "DLSSD.ReflectedAlbedo.Subrect.Base.Y"
 #define NVSDK_NGX_Parameter_DLSSD_ColorBeforeParticles_Subrect_Base_X "DLSSD.ColorBeforeParticles.Subrect.Base.X"

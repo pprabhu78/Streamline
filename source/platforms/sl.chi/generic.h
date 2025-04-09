@@ -134,6 +134,8 @@ protected:
 
     using ResourceTrackingMap = std::map<uint64_t, IUnknown*>;
     ResourceTrackingMap m_resourceTrackMap{};
+    // frame-aware tracking of resources tagged using frame-based resource tagging APIs
+    std::map<uint32_t, ResourceTrackingMap> m_frameResourceTrackingMap{};
 
     PFun_ResourceAllocateCallback* m_allocateCallback = {};
     PFun_ResourceReleaseCallback* m_releaseCallback = {};
@@ -258,7 +260,9 @@ public:
     }
 
     virtual ComputeStatus startTrackingResource(uint64_t uid, Resource resource) override;
+    virtual ComputeStatus startTrackingResource(uint32_t frameId, uint64_t uid, Resource resource) override;
     virtual ComputeStatus stopTrackingResource(uint64_t uid, Resource dbgResource) override;
+    virtual ComputeStatus stopTrackingResource(uint32_t frameId, uint64_t uid, Resource dbgResource) override;
 
     ComputeStatus restorePipeline(CommandList cmdList)  override { return ComputeStatus::eOk; }
 
@@ -277,6 +281,8 @@ public:
     ComputeStatus endProfiling(CommandList cmdList)  override { return ComputeStatus::eOk; }
     ComputeStatus beginProfilingQueue(CommandQueue cmdList, uint32_t metadata, const char* marker)  override { return ComputeStatus::eOk; }
     ComputeStatus endProfilingQueue(CommandQueue cmdList)  override { return ComputeStatus::eOk; }
+
+    virtual bool signalCPUFence(Fence fence, uint64_t syncValue) = 0;
 
     virtual ComputeStatus setSleepMode(const ReflexOptions& consts) override;
     virtual ComputeStatus getSleepStatus(ReflexState& settings) override;

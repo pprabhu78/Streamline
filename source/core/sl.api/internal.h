@@ -24,12 +24,14 @@
 
 #include <string>
 #include <vector>
+#include <atomic>
 #ifdef SL_WINDOWS
 #include <windows.h>
 #include <unknwn.h>
 #endif
 
 #include "include/sl_struct.h"
+#include "include/sl_core_types.h"
 
 // Forward defines so we can reduce the overall number of includes
 struct NVSDK_NGX_Parameter;
@@ -113,6 +115,15 @@ using PFuncGetPluginFunction = void* (const char* name);
 using PFuncOnPluginsInitialized = void(const char* loaderJSON);
 
 } // namespace api
+
+struct FrameHandleImplementation : public FrameToken
+{
+    FrameHandleImplementation() {};
+
+    virtual operator uint32_t() const override final { return counter.load(); };
+
+    std::atomic<uint32_t> counter{};
+};
 
 //! IMPORTANT: 
 //! 

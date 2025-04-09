@@ -3,9 +3,9 @@ Streamline - DLSS-RR
 =======================
 
 >The focus of this guide is on using Streamline to integrate DLSS Ray Reconstruction (DLSS-RR) into an application.  For more information about DLSS-RR itself, please visit the [NVIDIA Developer DLSS Page](https://developer.nvidia.com/rtx/dlss)
->For information on user interface considerations when using the DLSS-RR plugin, please see the "RTX UI Developer Guidelines.pdf" document included in the DLSS SDK.
+>For information on user interface considerations when using the DLSS-RR plugin, please see the ["RTX UI Developer Guidelines.pdf"](<RTX UI Developer Guidelines.pdf>) document included in the DLSS SDK.
 
-Version 2.7.2
+Version 2.7.30
 =======
 
 ### 1.0 INITIALIZE AND SHUTDOWN
@@ -301,7 +301,7 @@ sl::ResourceTag specMvecsTag = sl::ResourceTag{ &specMvecs, sl::kBufferTypeSpecu
 
 // Tag in group
 sl::Resource inputs[] = {colorInTag, colorOutTag, depthTag, mvecTag, diffuseAlbdedoTag, specularAlbedoTag, normalRoughnessTag, specMvecsTag};
-slSetTag(viewport, inputs, _countof(inputs), cmdList);
+slSetTagForFrame(*currentFrame, viewport, inputs, _countof(inputs), cmdList);
 ```
 
 > **NOTE:**

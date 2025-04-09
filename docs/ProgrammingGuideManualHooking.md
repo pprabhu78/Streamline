@@ -2,7 +2,7 @@
 Streamline - Manual Hooking
 =======================
 
-Version 2.7.2
+Version 2.7.30
 =======
 
 The automated global hooking is a great way to quickly enable SL features in any application. However, this can lead to unnecessary overhead caused by the entire API redirection through SL proxies and problems with tools and 3rd party libraries which do not expect to receive SL proxies as inputs.
@@ -498,7 +498,7 @@ When using D3D tagging is similar to the regular SL integrations with the except
 //
 sl::Resource mvec = { sl::ResourceType::Tex2d, mvecResource, nullptr, nullptr, D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr };
 sl::ResourceTag mvecTag = sl::ResourceTag {&mvec, sl::kBufferTypeMvec, sl::ResourceLifecycle::eOnlyValidNow, &mvecExtent };
-slSetTag(viewport, &mvecTag, 1, cmdList);
+slSetTagForFrame(*currentFrame, viewport, &mvecTag, 1, cmdList);
 ```
 
 #### 6.2 Vulkan
@@ -513,7 +513,7 @@ When using Vulkan tagging is a bit more involved since host needs to provide add
 // Vulkan does not provide a way to obtain VkImage description so host must provide one.
 sl::Resource mvec = { sl::ResourceType::Tex2d, mvecImage, nullptr, mvecImageView, VK_IMAGE_LAYOUT_GENERAL , 1920, 1080, VK_FORMAT_R32G32_SFLOAT, 1, 1, 0, 0, VK_IMAGE_USAGE_STORAGE_BIT };
 sl::ResourceTag mvecTag = sl::ResourceTag {&mvec, sl::kBufferTypeMvec, sl::ResourceLifecycle::eOnlyValidNow, &mvecExtent };
-slSetTag(viewport, &mvecTag, 1, cmdList);
+slSetTagForFrame(*currentFrame, viewport, &mvecTag, 1, cmdList);
 ```
 
 > **IMPORTANT:**

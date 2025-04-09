@@ -75,6 +75,7 @@ struct FeatureContext
     PFun_slFreeResources* freeResources{};
     PFun_slEvaluateFeature* evaluate{};
     PFun_slSetTag* setTag{};
+    PFun_slSetTagForFrame* setTagForFrame{};
     PFun_slSetConstants* setConstants{};
     PFun_slIsSupported* isSupported{};
 };

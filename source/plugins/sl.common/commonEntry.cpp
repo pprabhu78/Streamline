@@ -22,9 +22,6 @@
 
 #include <dxgi1_6.h>
 #include <d3d11_4.h>
-#include <future>
-#include <map>
-#include <unordered_set>
 
 #include "include/sl.h"
 #include "source/core/sl.api/internal.h"
@@ -66,6 +63,8 @@ using json = nlohmann::json;
 
 PCLSTATS_DEFINE()
 
+#define SL_TAG_LOG_ENABLE 0
+
 namespace sl
 {
 
@@ -96,24 +95,9 @@ struct NGXContextD3D12 : public common::NGXContext
 {
 };
 
-struct BufferTagInfo
-{
-    uint32_t viewportId{};
-    BufferType type{};
-    ResourceLifecycle lifecycle{};
-
-    inline bool operator==(const BufferTagInfo& rhs) const {
-        return viewportId == rhs.viewportId && type == rhs.type && lifecycle == rhs.lifecycle;
-    }
-};
-
-struct BufferTagInfoHash
-{
-    size_t operator()(const BufferTagInfo& info) const
-    {
-        return (size_t(info.viewportId) << 48) | (size_t(info.type) << 32) | size_t(info.lifecycle);
-    }
-};
+// multi-writer multi-reader locking mechanism for multi-threaded resource tagging concurrency
+using writeLock = std::unique_lock<std::shared_timed_mutex>;
+using readLock = std::shared_lock<std::shared_timed_mutex>;
 
 namespace common
 {
@@ -134,8 +118,6 @@ struct CommonEntryContext
     bool needDX11On12 = false;
     bool needDRS = false;
 
-    std::unordered_set<BufferTagInfo, BufferTagInfoHash> requiredTags{};
-    
     NGXContextStandard ngxContext{};    // Regular context based on requested API from the host
     NGXContextD3D12 ngxContextD3D12{};  // Special context for plugins which run d3d11 on d3d12
 
@@ -148,14 +130,18 @@ struct CommonEntryContext
     chi::ICompute* computeD3D12{}; // Only valid when running D3D11 and some features require "d3d11 on 12"
     RenderAPI platform = RenderAPI::eD3D12;
 
-    std::mutex resourceTagMutex{};
-    std::map<uint64_t, CommonResource> idToResourceMap;
+    std::unique_ptr<ResourceTaggingBase> pBaseResourceTagging{};
     // Common constants must be set every frame, we allow up to 3 frames in flight
     common::ViewportIdFrameData<3, true> constants = { "common" };
 
     // WAR for interposer < 2.3 which don't load PCL plugin.  PCL functionality will instead be handled in sl.common.
     PCLOptions pclOptions{};
     bool enablePCLPluginInCommonWAR = false;
+    // Updated from sl::Preferences flag for the same to track whether resource tagging is frame-based.
+    // In absence of common implementation or host SL SDK version check, this is necessary because legacy tagging API doesn't support
+    // frame-based resource-tagging and thereby resource-tagging for multiple frames in the same frame as required by some SL clients
+    // and is therefore not frame-aware.
+    bool useResourceTaggingForFrame = false;
 };
 }
 
@@ -171,70 +157,99 @@ extern uint64_t getCurrentFrame();
 
 //! Thread safe get/set resource tag
 //! 
-void getCommonTag(BufferType tagType, uint32_t id, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs)
+void getCommonTag(BufferType tagType, uint32_t frameId, uint32_t viewportId, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs, bool optional)
 {
     auto& ctx = (*common::getContext());
 
-    //! First look for local tags
-    if (inputs)
+    if (ctx.pBaseResourceTagging == nullptr)
     {
-        std::vector<ResourceTag*> tags;
-        if (findStructs<ResourceTag>((const void**)inputs, numInputs, tags))
-        {
-            for (auto& tag : tags)
-            {
-                if (tag->type == tagType)
-                {
-                    res.extent = tag->extent;
-                    res.res = *tag->resource;
-
-                    // Optional extensions are chained after the tag they belong to
-                    PrecisionInfo* optPi = findStruct<PrecisionInfo>(tag->next);
-                    res.pi = optPi ? *optPi : PrecisionInfo{};
-
-                    //! Keep track of what tags are requested for what viewport (unique insert)
-                    //! 
-                    //! Note that the presence of a valid pointer to 'inputs' 
-                    //! indicates that we are called during the evaluate feature call.
-                    ctx.resourceTagMutex.lock();
-                    ctx.requiredTags.insert({ id, tagType, ResourceLifecycle::eValidUntilEvaluate });
-                    ctx.resourceTagMutex.unlock();
-                    return;
-                }
-            }
-        }
+        SL_LOG_ERROR("SL Resource tagging not properly initialized!");
+        assert("SL Resource tagging not properly initialized!" && false);
+        return;
     }
 
-    //! Now let's check the global ones
-    uint64_t uid = ((uint64_t)tagType << 32) | (uint64_t)id;
-    std::lock_guard<std::mutex> lock(ctx.resourceTagMutex);
-    CommonResource& resTmp = ctx.idToResourceMap[uid];
-    uint64_t uCurFrame = getCurrentFrame();
-    if (resTmp.uFrameWhenTagged != ~0ull && uCurFrame > resTmp.uFrameWhenTagged + 1)
-    {
-        if (resTmp)
-        {
-            SL_LOG_WARN("Tags are valid only until Present(). Invalidating the hanging tag %d for viewport %d (created at frame: %d, current frame: %d)", tagType, id, resTmp.uFrameWhenTagged, uCurFrame);
-            if (resTmp.clone)
-            {
-                ctx.pool->recycle(resTmp.clone);
-            }
-            else
-            {
-                ctx.compute->stopTrackingResource(uid, &resTmp.res);
-            }
-        }
-        resTmp = CommonResource();
-    }
-    res = resTmp;
-    //! Keep track of what tags are requested for what viewport (unique insert)
-    //! 
-    //! Note that the presence of a valid pointer to 'inputs' indicates that we are called
-    //! during the evaluate feature call, otherwise tag was requested from a hook (present etc.)
-    ctx.requiredTags.insert({ id, tagType, inputs ? ResourceLifecycle::eValidUntilEvaluate : ResourceLifecycle::eValidUntilPresent });
+    ctx.pBaseResourceTagging->getTag(tagType, frameId, viewportId, res, inputs, numInputs, optional);
 }
 
-sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32_t id, const Extent* ext, ResourceLifecycle lifecycle, CommandBuffer* cmdBuffer, bool localTag, const PrecisionInfo* pi)
+void common::ResourceTaggingForFrame::recycleTags()
+{
+    auto& ctx = (*common::getContext());
+
+    assert(ctx.pool != nullptr);
+    assert(ctx.compute != nullptr);
+
+    // Recycle and end resource tracking of resource tags at the end of frame-present
+    // for the new tagging API as expected based on maximum lifecycle of tags.
+
+    uint32_t currFrameId{ UINT_MAX };
+    api::getContext()->parameters->get(sl::param::latency::kMarkerPresentFrame, &currFrameId);
+
+    writeLock wLock1(frameResourceTagMapMutex);
+    if (currFrameId == UINT_MAX)
+    {
+        //Reflex unavailable
+        if (!frameResourceTagMap.empty())
+        {
+            currFrameId = frameResourceTagMap.begin()->first;
+        }
+    }
+    else
+    {
+        skippedPresent = (currFrameId - presentFrameId.load() > 1);
+    }
+    presentFrameId = currFrameId;
+
+    for (auto frameMapIt = frameResourceTagMap.begin(); frameMapIt != frameResourceTagMap.end();)
+    {
+        if (frameMapIt->first <= currFrameId)
+        {
+            {
+                writeLock wLock2(frameMapIt->second.resourceTagContainerMutex);
+                for (auto it = frameMapIt->second.resourceTagContainer.begin(); it != frameMapIt->second.resourceTagContainer.end();)
+                {
+                    ctx.pool->recycle(it->second.clone);
+                    ctx.compute->stopTrackingResource(frameMapIt->first, it->first, &it->second.res);
+                    it = frameMapIt->second.resourceTagContainer.erase(it);
+                }
+            }
+
+            frameMapIt = frameResourceTagMap.erase(frameMapIt);
+        }
+        else
+        {
+            break;
+        }
+    }
+}
+
+void recycleFramePresentEndResourceTags()
+{
+    auto& ctx = (*common::getContext());
+
+    if (ctx.pBaseResourceTagging == nullptr)
+    {
+        SL_LOG_ERROR("SL Resource tagging not properly initialized!");
+        assert("SL Resource tagging not properly initialized!" && false);
+        return;
+    }
+
+    if (ctx.useResourceTaggingForFrame)
+    {
+        auto pResourceTaggingForFrame = dynamic_cast<common::ResourceTaggingForFrame*>(ctx.pBaseResourceTagging.get());
+        assert(pResourceTaggingForFrame != nullptr);
+        pResourceTaggingForFrame->recycleTags();
+    }
+}
+
+sl::Result common::ResourceTaggingGeneral::setTag(const sl::Resource* resource,
+    BufferType tag,
+    uint32_t id,
+    const Extent* ext,
+    ResourceLifecycle lifecycle,
+    CommandBuffer* cmdBuffer,
+    bool localTag,
+    const PrecisionInfo* pi,
+    const sl::FrameToken& frame)
 {
     auto& ctx = (*common::getContext());
     uint64_t uid = ((uint64_t)tag << 32) | (uint64_t)id;
@@ -252,7 +267,7 @@ sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32
         // Check if state is provided but only if not running on D3D11
         if (ctx.platform != RenderAPI::eD3D11 && resource->state == UINT_MAX)
         {
-            SL_LOG_ERROR( "Resource state must be provided");
+            SL_LOG_ERROR("Resource state must be provided");
             return sl::Result::eErrorMissingResourceState;
         }
 #endif
@@ -269,10 +284,10 @@ sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32
             //! 
             //! If tag is required on present we have to make a copy always, if tag is required on evaluate
             //! we make a copy only if buffer is tagged as "valid only now" and this is not a local tag.
-            ctx.resourceTagMutex.lock();
-            auto requiredOnPresent = ctx.requiredTags.find({ id, tag, ResourceLifecycle::eValidUntilPresent }) != ctx.requiredTags.end();
-            auto requiredOnEvaluate = ctx.requiredTags.find({ id, tag, ResourceLifecycle::eValidUntilEvaluate }) != ctx.requiredTags.end();
-            ctx.resourceTagMutex.unlock();
+            resourceTagMutex.lock();
+            auto requiredOnPresent = requiredTags.find({ id, tag, ResourceLifecycle::eValidUntilPresent }) != requiredTags.end();
+            auto requiredOnEvaluate = requiredTags.find({ id, tag, ResourceLifecycle::eValidUntilEvaluate }) != requiredTags.end();
+            resourceTagMutex.unlock();
             auto makeCopy = requiredOnPresent || (requiredOnEvaluate && lifecycle == ResourceLifecycle::eOnlyValidNow && !localTag);
 
             if (makeCopy)
@@ -288,9 +303,9 @@ sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32
                 auto actualResource = (chi::Resource)resource;
 
                 // Quick peek at the previous tag with the same id
-                ctx.resourceTagMutex.lock();
-                auto prevTag = ctx.idToResourceMap[uid];
-                ctx.resourceTagMutex.unlock();
+                resourceTagMutex.lock();
+                auto prevTag = idToResourceMap[uid];
+                resourceTagMutex.unlock();
 
                 if (prevTag.clone)
                 {
@@ -350,8 +365,8 @@ sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32
         }
     }
 
-    std::lock_guard<std::mutex> lock(ctx.resourceTagMutex);
-    auto& prevTag = ctx.idToResourceMap[uid];
+    std::lock_guard<std::mutex> lock(resourceTagMutex);
+    auto& prevTag = idToResourceMap[uid];
     if (prevTag.clone && !cr.clone)
     {
         // Host can set null as a tag or even change the life-cycle of a tag, in that case any previously allocated copies must be recycled
@@ -361,16 +376,381 @@ sl::Result slSetTagInternal(const sl::Resource* resource, BufferType tag, uint32
     return Result::eOk;
 }
 
-
-// For future reference, this function supports setting tags in 3 ways:
-//  * An array of ResourceTags
-//  * A linked-list of ResourceTags, using the `next` ptr to navigate the linked-list
-//  * A hybrid approach
-// Extensions usage:
-//  Additionally, we support extensions to ResourceTags via the `next` ptr.
-//  The requirement is that when setting tags, the developer should chain the extensions right after the tag that they belong to.
-sl::Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* resources, uint32_t numResources, sl::CommandBuffer* cmdBuffer)
+//! Thread safe get/set resource tag
+//! 
+void common::ResourceTaggingGeneral::getTag(BufferType tagType, uint32_t frameId, uint32_t viewportId, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs, bool optional)
 {
+    auto& ctx = (*common::getContext());
+
+    //! First look for local tags
+    if (inputs)
+    {
+        std::vector<ResourceTag*> tags;
+        if (findStructs<ResourceTag>((const void**)inputs, numInputs, tags))
+        {
+            for (auto& tag : tags)
+            {
+                if (tag->type == tagType)
+                {
+                    res.extent = tag->extent;
+                    res.res = *tag->resource;
+
+                    // Optional extensions are chained after the tag they belong to
+                    PrecisionInfo* optPi = findStruct<PrecisionInfo>(tag->next);
+                    res.pi = optPi ? *optPi : PrecisionInfo{};
+
+                    //! Keep track of what tags are requested for what viewport (unique insert)
+                    //! 
+                    //! Note that the presence of a valid pointer to 'inputs' 
+                    //! indicates that we are called during the evaluate feature call.
+                    std::lock_guard<std::mutex> lock(resourceTagMutex);
+                    requiredTags.insert({ viewportId, tagType, ResourceLifecycle::eValidUntilEvaluate });
+
+                    return;
+                }
+            }
+        }
+    }
+
+    //! Now let's check the global ones
+    uint64_t uid = ((uint64_t)tagType << 32) | (uint64_t)viewportId;
+    std::lock_guard<std::mutex> lock(resourceTagMutex);
+    // legacy tag-retrieval implementation
+    CommonResource& resTmp = idToResourceMap[uid];
+    uint64_t uCurFrame = getCurrentFrame();
+    if (resTmp.uFrameWhenTagged != ~0ull && uCurFrame > resTmp.uFrameWhenTagged + 1)
+    {
+        if (resTmp)
+        {
+            SL_LOG_WARN("Tags are valid only until Present(). Invalidating the hanging tag %d for viewport %d (created at frame: %d, current frame: %d)", tagType, viewportId, resTmp.uFrameWhenTagged, uCurFrame);
+            if (resTmp.clone)
+            {
+                ctx.pool->recycle(resTmp.clone);
+            }
+            else
+            {
+                ctx.compute->stopTrackingResource(uid, &resTmp.res);
+            }
+        }
+        resTmp = CommonResource();
+    }
+    res = resTmp;
+
+    //! Keep track of what tags are requested for what viewport (unique insert)
+    //! 
+    //! Note that the presence of a valid pointer to 'inputs' indicates that we are called
+    //! during the evaluate feature call, otherwise tag was requested from a hook (present etc.)
+    requiredTags.insert({ viewportId, tagType, inputs ? ResourceLifecycle::eValidUntilEvaluate : ResourceLifecycle::eValidUntilPresent });
+}
+
+common::ResourceTaggingGeneral::~ResourceTaggingGeneral()
+{
+    auto& ctx = (*common::getContext());
+
+    assert(ctx.pool != nullptr);
+    assert(ctx.compute != nullptr);
+
+    std::lock_guard<std::mutex> lock(resourceTagMutex);
+    requiredTags.clear();
+
+    for (auto&[resourceTagId, resourceTag] : idToResourceMap)
+    {
+        ctx.pool->recycle(resourceTag.clone);
+        ctx.compute->stopTrackingResource(resourceTagId, &resourceTag.res);
+        resourceTag = {};
+    }
+
+    idToResourceMap.clear();
+}
+
+// frame-aware resource tagging internal functionality for tagging API slSetTagForFrame
+sl::Result common::ResourceTaggingForFrame::setTag(const sl::Resource* resource, BufferType tag, uint32_t id, const Extent* ext, ResourceLifecycle lifecycle, CommandBuffer* cmdBuffer, bool localTag, const PrecisionInfo* pi, const sl::FrameToken& frame)
+{
+    auto& ctx = (*common::getContext());
+
+    assert(ctx.pool != nullptr);
+    assert(ctx.compute != nullptr);
+
+    uint64_t uid = ((uint64_t)tag << 32) | (uint64_t)id;
+    CommonResource cr{};
+    uint32_t currFrameId = frame;
+    if (resource && resource->native)
+    {
+        cr.res = *(sl::Resource*)resource;
+        if (ctx.platform == RenderAPI::eD3D11)
+        {
+            // Force common state for d3d11 in case engine is providing something that won't work on compute queue
+            cr.res.state = 0;
+        }
+#if defined(SL_PRODUCTION) || defined(SL_DEVELOP)
+        // Check if state is provided but only if not running on D3D11
+        if (ctx.platform != RenderAPI::eD3D11 && resource->state == UINT_MAX)
+        {
+            SL_LOG_ERROR("Resource state must be provided");
+            return sl::Result::eErrorMissingResourceState;
+        }
+#endif
+        //! Check for volatile tags
+        //! 
+        //! Note that tagging outputs as volatile is ignored, we need to write output into the engine's resource
+        //!
+        bool writeTag = tag == kBufferTypeScalingOutputColor || tag == kBufferTypeAmbientOcclusionDenoised ||
+            tag == kBufferTypeShadowDenoised || tag == kBufferTypeSpecularHitDenoised || tag == kBufferTypeDiffuseHitDenoised ||
+            tag == kBufferTypeBackbuffer;
+        if (!writeTag && lifecycle != ResourceLifecycle::eValidUntilPresent)
+        {
+            //! Only make a copy if this tag is required by at least one loaded and supported plugin on the same viewport and with immutable life-cycle.
+            //! 
+            //! If tag is required on present we have to make a copy always, if tag is required on evaluate
+            //! we make a copy only if buffer is tagged as "valid only now" and this is not a local tag.
+            requiredTagMutex.lock();
+            auto requiredOnPresent = requiredTags.find({ id, tag, ResourceLifecycle::eValidUntilPresent }) != requiredTags.end();
+            auto requiredOnEvaluate = requiredTags.find({ id, tag, ResourceLifecycle::eValidUntilEvaluate }) != requiredTags.end();
+            requiredTagMutex.unlock();
+            auto makeCopy = requiredOnPresent || (requiredOnEvaluate && lifecycle == ResourceLifecycle::eOnlyValidNow && !localTag);
+
+            if (makeCopy)
+            {
+                if (!cmdBuffer)
+                {
+                    SL_LOG_ERROR("Valid command buffer is required when tagging resources");
+                    return Result::eErrorMissingInputParameter;
+                }
+                cmdBuffer = common::getNativeCommandBuffer(cmdBuffer);
+
+                // Actual resource to use
+                auto actualResource = (chi::Resource)resource;
+
+                // Quick peek at the previous tag with the same id
+                {
+                    readLock rLock1(frameResourceTagMapMutex);
+                    if (auto search = frameResourceTagMap.find(currFrameId); search != frameResourceTagMap.end())
+                    {
+                        readLock rLock2(search->second.resourceTagContainerMutex);
+                        auto& prevTag = search->second.resourceTagContainer[uid];
+                        if (prevTag.clone)
+                        {
+                            ctx.pool->recycle(prevTag.clone);
+                        }
+                        else
+                        {
+                            ctx.compute->stopTrackingResource(currFrameId, uid, &prevTag.res);
+                        }
+                    }
+                }
+
+                // Defaults to eCopyDestination state 
+                cr.clone = ctx.pool->allocate(actualResource, extra::format("sl.tag.{}.volatile.{}", sl::getBufferTypeAsStr(tag), id).c_str());
+
+                // Get tagged resource's state
+                chi::ResourceState state{};
+                ctx.compute->getResourceState(cr.res.state, state);
+                // Now store clone's state for further use in SL
+                ctx.compute->getNativeResourceState(chi::ResourceState::eCopyDestination, cr.res.state);
+                extra::ScopedTasks revTransitions;
+                chi::ResourceTransition transitions[] =
+                {
+                    {actualResource, chi::ResourceState::eCopySource, state},
+                };
+                CHI_CHECK_RR(ctx.compute->transitionResources(cmdBuffer, transitions, (uint32_t)countof(transitions), &revTransitions));
+                CHI_CHECK_RR(ctx.compute->copyResource(cmdBuffer, cr.clone, actualResource));
+
+                // We've made a copy of the original resource and we're not doing AddRef() on the original. So set the
+                // original to nullptr - that way nobody can access it (it may become invalid at some point).
+                cr.res.native = nullptr;
+            }
+        }
+    }
+
+    if (ext)
+    {
+        cr.extent = *ext;
+    }
+
+    if (pi)
+    {
+        cr.pi = *pi;
+    }
+
+    // No need to track volatile resources since we keep a copy
+    if (cr.clone == nullptr)
+    {
+        // If this is a local tag but it was not copied there is nothing more to do, bail out
+        if (localTag) return Result::eOk;
+
+        if (cr.res.native)
+        {
+            ctx.compute->startTrackingResource(currFrameId, uid, &cr.res);
+        }
+        else
+        {
+            ctx.compute->stopTrackingResource(currFrameId, uid, &cr.res);
+        }
+    }
+
+    readLock rLock(frameResourceTagMapMutex);
+    if (frameResourceTagMap.size() < MAX_FRAMES_IN_FLIGHT)
+    {
+        writeLock wLock(frameResourceTagMap[currFrameId].resourceTagContainerMutex);
+        auto& cRes = frameResourceTagMap[currFrameId].resourceTagContainer[uid];
+        ctx.pool->recycle(cRes.clone);
+        ctx.compute->stopTrackingResource(currFrameId, uid, &cRes.res);
+
+        cRes = cr;
+
+#if SL_TAG_LOG_ENABLE
+        SL_LOG_VERBOSE("Resource tag set for resource %p, buffer type %s, viewport %d, frame %d", sl::chi::Resource(cRes)->native, sl::getBufferTypeAsStr(tag), id, currFrameId);
+#endif
+    }
+    else
+    {
+        std::string errorStr{ "Stale frame resource tags haven't been deleted or there are indeed supposed to be more frames in flight \
+than that defined by MAX_FRAMES_IN_FLIGHT, so increment the value!" };
+
+        if (presentFrameId == UINT_MAX)
+        {
+            //Reflex unavailable, so no SL present-time features enabled due to dependency but active render-time features may still tag resources.
+            SL_LOG_WARN(errorStr.c_str());
+            SL_LOG_WARN("Reflex unavailable, so no SL present-time features active due to dependency but active render-time features may still tag resources.");
+        }
+        else
+        {
+            if (skippedPresent.load())
+            {
+                // skipped present last frame
+                SL_LOG_WARN("Resource tags were set for the past frame that was not potentially presented!");
+            }
+            else if ((presentFrameId.load() - maxTagSetFrameId) > 1)
+            {
+                // skipped tag-setting last frame
+                SL_LOG_WARN("Resource tags were not potentially set for the last frame!");
+            }
+            else
+            {
+                SL_LOG_ERROR(errorStr.c_str());
+                return Result::eErrorInvalidState;
+            }
+        }
+    }
+
+    if (frame > maxTagSetFrameId)
+    {
+        maxTagSetFrameId = frame;
+    }
+
+    return Result::eOk;
+}
+
+//! Thread safe get/set resource tag
+//! 
+void common::ResourceTaggingForFrame::getTag(BufferType tagType, uint32_t frameId, uint32_t viewportId, CommonResource& res, const sl::BaseStructure** inputs, uint32_t numInputs, bool optional)
+{
+    //! First look for local tags
+    if (inputs)
+    {
+        std::vector<ResourceTag*> tags;
+        if (findStructs<ResourceTag>((const void**)inputs, numInputs, tags))
+        {
+            for (auto& tag : tags)
+            {
+                if (tag->type == tagType)
+                {
+                    res.extent = tag->extent;
+                    res.res = *tag->resource;
+
+                    // Optional extensions are chained after the tag they belong to
+                    PrecisionInfo* optPi = findStruct<PrecisionInfo>(tag->next);
+                    res.pi = optPi ? *optPi : PrecisionInfo{};
+
+                    //! Keep track of what tags are requested for what viewport (unique insert)
+                    //! 
+                    //! Note that the presence of a valid pointer to 'inputs' 
+                    //! indicates that we are called during the evaluate feature call.
+                    std::lock_guard<std::mutex> lock(requiredTagMutex);
+                    requiredTags.insert({ viewportId, tagType, ResourceLifecycle::eValidUntilEvaluate });
+
+                    return;
+                }
+            }
+        }
+    }
+
+    //! Now let's check the global ones
+    uint64_t uid = ((uint64_t)tagType << 32) | (uint64_t)viewportId;
+    {
+        readLock rLock(frameResourceTagMapMutex);
+        if (auto searchFrame = frameResourceTagMap.find(frameId); searchFrame != frameResourceTagMap.end())
+        {
+            readLock rLock(searchFrame->second.resourceTagContainerMutex);
+            if (auto searchTag = searchFrame->second.resourceTagContainer.find(uid); searchTag != searchFrame->second.resourceTagContainer.end())
+            {
+                res = searchTag->second;
+#if SL_TAG_LOG_ENABLE
+                SL_LOG_VERBOSE("Resource tag retrieved for resource %p, buffer type %s, viewport %d, frame %d", sl::chi::Resource(res)->native, sl::getBufferTypeAsStr(tagType), viewportId, frameId);
+#endif
+            }
+            else if (!optional)
+            {
+                //TODO: check if the tag is one of the required tags declared for any of the enabled features in respective common::PluginInfo
+                // and flag an error if so.
+                SL_LOG_ERROR("Tag of buffer %s not set for frame %d, viewport %d", getBufferTypeAsStr(tagType), frameId, viewportId);
+            }
+        }
+        else
+        {
+            SL_LOG_INFO("SL resource tags for frame %d not set yet!", frameId);
+        }
+    }
+
+    std::lock_guard<std::mutex> lock(requiredTagMutex);
+    //! Keep track of what tags are requested for what viewport (unique insert)
+    //! 
+    //! Note that the presence of a valid pointer to 'inputs' indicates that we are called
+    //! during the evaluate feature call, otherwise tag was requested from a hook (present etc.)
+    requiredTags.insert({ viewportId, tagType, inputs ? ResourceLifecycle::eValidUntilEvaluate : ResourceLifecycle::eValidUntilPresent });
+}
+
+common::ResourceTaggingForFrame::~ResourceTaggingForFrame()
+{
+    auto& ctx = (*common::getContext());
+
+    assert(ctx.pool != nullptr);
+    assert(ctx.compute != nullptr);
+
+    {
+        std::lock_guard<std::mutex> lock(requiredTagMutex);
+        requiredTags.clear();
+    }
+
+    writeLock wLock1(frameResourceTagMapMutex);
+    for (auto frameMapIt = frameResourceTagMap.begin(); frameMapIt != frameResourceTagMap.end();)
+    {
+        {
+            writeLock wLock2(frameMapIt->second.resourceTagContainerMutex);
+            for (auto it = frameMapIt->second.resourceTagContainer.begin(); it != frameMapIt->second.resourceTagContainer.end();)
+            {
+                ctx.pool->recycle(it->second.clone);
+                ctx.compute->stopTrackingResource(frameMapIt->first, it->first, &it->second.res);
+                it->second = {};
+                it = frameMapIt->second.resourceTagContainer.erase(it);
+            }
+        }
+
+        frameMapIt = frameResourceTagMap.erase(frameMapIt);
+    }
+}
+
+sl::Result setTagCommon(const sl::ViewportHandle& viewport, const sl::ResourceTag* resources, uint32_t numResources, sl::CommandBuffer* cmdBuffer, const sl::FrameToken& frame)
+{
+    auto& ctx = (*common::getContext());
+
+    if (ctx.pBaseResourceTagging == nullptr)
+    {
+        SL_LOG_ERROR("SL Resource tagging not properly initialized!");
+        assert("SL Resource tagging not properly initialized!" && false);
+        return Result::eErrorNotInitialized;
+    }
+
     for (uint32_t i = 0; i < numResources; i++)
     {
         auto tag = &resources[i];
@@ -378,12 +758,31 @@ sl::Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* r
         {
             // Find the optional extension PrecisionInfo, until we see a ResourceTag (or nullptr) in the linked list
             PrecisionInfo* optPi = findStruct<PrecisionInfo, ResourceTag>(tag->next);
-            SL_CHECK(slSetTagInternal(tag->resource, tag->type, viewport, &tag->extent, tag->lifecycle, cmdBuffer, false, optPi));
+            SL_CHECK(ctx.pBaseResourceTagging->setTag(tag->resource, tag->type, viewport, &tag->extent, tag->lifecycle, cmdBuffer, false, optPi, frame));
 
             tag = findStruct<ResourceTag>(tag->next);
         }
     }
+
     return sl::Result::eOk;
+}
+
+sl::Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* resources, uint32_t numResources, sl::CommandBuffer* cmdBuffer)
+{
+    auto& ctx = (*common::getContext());
+
+    if (ctx.useResourceTaggingForFrame)
+    {
+        SL_LOG_ERROR("Deprecated SL API slSetTag and the new API slSetTagForFrame are both being invalidly used in the same application! Please switch to slSetTagForFrame API.");
+        return Result::eErrorInvalidIntegration;
+    }
+
+    return setTagCommon(viewport, resources, numResources, cmdBuffer, FrameHandleImplementation{});
+}
+
+sl::Result slSetTagForFrame(const sl::FrameToken& frame, const sl::ViewportHandle& viewport, const sl::ResourceTag* resources, uint32_t numResources, sl::CommandBuffer* cmdBuffer)
+{
+    return setTagCommon(viewport, resources, numResources, cmdBuffer, frame);
 }
 
 //! Make sure host has provided common constants and
@@ -469,7 +868,16 @@ sl::Result slEvaluateFeature(sl::Feature feature, const sl::FrameToken& frame, c
     //! Look for local tags that won't be valid later on
     if (inputs)
     {
-        std::vector<ResourceTag*> tags;
+        auto& ctx = (*common::getContext());
+
+        if (ctx.pBaseResourceTagging == nullptr)
+        {
+            SL_LOG_ERROR("SL Resource tagging not properly initialized!");
+            assert("SL Resource tagging not properly initialized!" && false);
+            return Result::eErrorNotInitialized;
+        }
+
+        std::vector<ResourceTag*> tags{};
         if (findStructs<ResourceTag>((const void**)inputs, numInputs, tags))
         {
             for (auto& tag : tags)
@@ -480,7 +888,7 @@ sl::Result slEvaluateFeature(sl::Feature feature, const sl::FrameToken& frame, c
                     PrecisionInfo* optPi = findStruct<PrecisionInfo>(tag->next);
 
                     //! Temporary tag, hence passing true
-                    SL_CHECK(slSetTagInternal(tag->resource, tag->type, *viewport, &tag->extent, tag->lifecycle, cmdBuffer, true, optPi));
+                    SL_CHECK(ctx.pBaseResourceTagging->setTag(tag->resource, tag->type, *viewport, &tag->extent, tag->lifecycle, cmdBuffer, true, optPi, frame));
                 }
             }
         }
@@ -911,7 +1319,11 @@ void releaseNGXResourceCallback(IUnknown* resource)
         {
             ID3D11Resource* d3d11Resource{};
             resource->QueryInterface(&d3d11Resource);
-            if (!d3d11Resource)
+            if (d3d11Resource)
+            {
+                d3d11Resource->Release();
+            }
+            else
             {
                 res->type = ResourceType::eUnknown;
             }
@@ -1080,7 +1492,7 @@ Result pclGetData(const BaseStructure*, BaseStructure* outputs, CommandBuffer*)
 bool slOnPluginStartup(const char* jsonConfig, void* device)
 {
     SL_PLUGIN_COMMON_STARTUP();
-    
+
     auto& ctx = (*common::getContext());
 
     auto parameters = api::getContext()->parameters;
@@ -1092,6 +1504,7 @@ bool slOnPluginStartup(const char* jsonConfig, void* device)
 
     //! Plugin manager gives us the device type and the application id
     json& config = *(json*)api::getContext()->loaderConfig;
+
     auto deviceType = RenderAPI::eD3D12;
     int appId = 0;
     config.at("appId").get_to(appId);
@@ -1388,6 +1801,19 @@ bool slOnPluginStartup(const char* jsonConfig, void* device)
         sl::pcl::implOnPluginStartup(parameters, &pclGetData, &pclSetData);
     }
 
+    PreferenceFlags preferenceFlags{};
+    api::getContext()->parameters->get(sl::param::global::kPreferenceFlags, (uint64_t*)&preferenceFlags);
+
+    ctx.useResourceTaggingForFrame = ((preferenceFlags & PreferenceFlags::eUseFrameBasedResourceTagging) != 0);
+    if (ctx.useResourceTaggingForFrame)
+    {
+        ctx.pBaseResourceTagging = std::make_unique<common::ResourceTaggingForFrame>();
+    }
+    else
+    {
+        ctx.pBaseResourceTagging = std::make_unique<common::ResourceTaggingGeneral>();
+    }
+
     return true;
 }
 
@@ -1411,6 +1837,12 @@ void slOnPluginShutdown()
 
     auto& ctx = (*common::getContext());
 
+    if (ctx.pBaseResourceTagging != nullptr)
+    {
+        ctx.pBaseResourceTagging.reset(nullptr);
+    }
+
+
     if (ctx.enablePCLPluginInCommonWAR)
     {
         sl::pcl::implOnPluginShutdown(parameters);
@@ -1424,8 +1856,6 @@ void slOnPluginShutdown()
         auto adapter = (IDXGIAdapter*)ctx.caps->adapters[i].nativeInterface;
         if(adapter) adapter->Release();
     }
-
-    ctx.idToResourceMap.clear();
 
     if (ctx.needNGX)
     {
@@ -1689,6 +2119,7 @@ SL_EXPORT void* slGetPluginFunction(const char* functionName)
     SL_EXPORT_FUNCTION(slOnPluginShutdown);
     SL_EXPORT_FUNCTION(slOnPluginStartup);
     SL_EXPORT_FUNCTION(slSetTag);
+    SL_EXPORT_FUNCTION(slSetTagForFrame);
     SL_EXPORT_FUNCTION(slSetConstants);
     SL_EXPORT_FUNCTION(slEvaluateFeature)
 

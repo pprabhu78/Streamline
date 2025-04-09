@@ -162,11 +162,11 @@ sl::Result templateBeginEvaluation(chi::CommandList pCmdList, const common::Even
     // 
     // For example, here we fetch depth and mvec with their extents
     // 
-    getTaggedResource(kBufferTypeDepth, ctx.depth, evd.id, false, inputs, numInputs);
-    getTaggedResource(kBufferTypeMotionVectors, ctx.mvec, evd.id, false, inputs, numInputs);
+    getTaggedResource(kBufferTypeDepth, ctx.depth, evd.frame, evd.id, false, inputs, numInputs);
+    getTaggedResource(kBufferTypeMotionVectors, ctx.mvec, evd.frame, evd.id, false, inputs, numInputs);
     // Now we fetch shadow in/out, assuming our plugin does some sort of denoising
-    getTaggedResource(kBufferTypeShadowNoisy, ctx.input, evd.id, false, inputs, numInputs);
-    getTaggedResource(kBufferTypeShadowDenoised, ctx.output, evd.id, false, inputs, numInputs);
+    getTaggedResource(kBufferTypeShadowNoisy, ctx.input, evd.frame, evd.id, false, inputs, numInputs);
+    getTaggedResource(kBufferTypeShadowDenoised, ctx.output, evd.frame, evd.id, false, inputs, numInputs);
 
     // If tagged resources are mandatory check if they are provided or not
     if (!ctx.depth || !ctx.mvec || !ctx.input || !ctx.output)

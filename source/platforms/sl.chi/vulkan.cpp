@@ -3200,6 +3200,22 @@ ComputeStatus Vulkan::endPerfSection(CommandList cmdList, const char *key, float
     return ComputeStatus::eOk;
 }
 
+bool Vulkan::signalCPUFence(Fence fence, uint64_t syncValue)
+{
+    VkSemaphoreSignalInfo signalInfo{};
+    signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
+    signalInfo.semaphore = (VkSemaphore)fence;
+    signalInfo.value = syncValue;
+
+    VkResult result = m_ddt.SignalSemaphore(m_device, &signalInfo);
+    if (result != VK_SUCCESS)
+    {
+        SL_LOG_ERROR("Failed to signal semaphore from CPU - error %d", result);
+        return false;
+    }
+    return true;
+}
+
 ComputeStatus Vulkan::getSwapChainBuffer(SwapChain swapchain, uint32_t index, Resource& buffer)
 {
     auto* sc = (SwapChainVk*)swapchain;

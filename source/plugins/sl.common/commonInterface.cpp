@@ -120,6 +120,8 @@ struct CommonInterfaceContext
 //! Our secondary context
 CommonInterfaceContext ctx;
 
+extern void recycleFramePresentEndResourceTags();
+
 uint64_t getCurrentFrame()
 {
     return ctx.currentFrame;
@@ -728,6 +730,8 @@ void afterPresentCommon(UINT Flags)
     {
         return;
     }
+
+    recycleFramePresentEndResourceTags();
 }
 
 HRESULT slHookPresent1(IDXGISwapChain* swapChain, UINT SyncInterval, UINT Flags, DXGI_PRESENT_PARAMETERS* params, bool& Skip)

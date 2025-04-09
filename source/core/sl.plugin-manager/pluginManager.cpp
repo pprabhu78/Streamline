@@ -602,7 +602,8 @@ bool PluginManager::loadPlugin(const fs::path pluginFullPath, Plugin **ppPlugin)
         // Plugin has already populated OS, driver and other custom requirements.
         extCfg["feature"]["lastError"] = "ok";
         extCfg["feature"]["rhi"] = plugin->config.at("rhi");
-        extCfg["feature"]["supported"] = (plugin->context.supportedAdapters != 0 && extCfg.contains("/feature/supported"_json_pointer) ? extCfg["feature"]["supported"].operator bool() : true);
+        extCfg["feature"]["supported"] = (plugin->context.supportedAdapters != 0
+            && (extCfg.contains("/feature/supported"_json_pointer) ? extCfg["feature"]["supported"].operator bool() : true));
         extCfg["feature"]["unloaded"] = false;
         extCfg["feature"]["api"]["detected"] = plugin->api.toStr();
         extCfg["feature"]["api"]["requested"] = m_api.toStr();
@@ -1321,6 +1322,7 @@ void PluginManager::mapPluginCallbacks(Plugin* plugin)
     plugin->context.freeResources = (PFun_slFreeResources*)plugin->getFunction("slFreeResources");
     plugin->context.evaluate = (PFun_slEvaluateFeature*)plugin->getFunction("slEvaluateFeature");
     plugin->context.setTag = (PFun_slSetTag*)plugin->getFunction("slSetTag");
+    plugin->context.setTagForFrame = (PFun_slSetTagForFrame*)plugin->getFunction("slSetTagForFrame");
     plugin->context.setConstants = (PFun_slSetConstants*)plugin->getFunction("slSetConstants");
 
     SL_LOG_INFO("Callback %s:slSetData:0x%llx", plugin->name.c_str(), plugin->context.setData);
@@ -1329,6 +1331,7 @@ void PluginManager::mapPluginCallbacks(Plugin* plugin)
     SL_LOG_INFO("Callback %s:slFreeResources:0x%llx", plugin->name.c_str(), plugin->context.freeResources);
     SL_LOG_INFO("Callback %s:slEvaluateFeature:0x%llx", plugin->name.c_str(), plugin->context.evaluate);
     SL_LOG_INFO("Callback %s:slSetTag:0x%llx", plugin->name.c_str(), plugin->context.setTag);
+    SL_LOG_INFO("Callback %s:slSetTagForFrame:0x%llx", plugin->name.c_str(), plugin->context.setTagForFrame);
     SL_LOG_INFO("Callback %s:slSetConsts:0x%llx", plugin->name.c_str(), plugin->context.setConstants);
 }
 

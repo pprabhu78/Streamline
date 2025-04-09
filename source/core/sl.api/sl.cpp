@@ -199,15 +199,6 @@ inline sl::Result slValidateFeatureContext(sl::Feature f, const sl::plugin_manag
     return Result::eOk;
 }
 
-struct FrameHandleImplementation : public FrameToken
-{
-    FrameHandleImplementation() {};
-
-    virtual operator uint32_t() const override final { return counter.load(); };
-
-    std::atomic<uint32_t> counter{};
-};
-
 struct APIContext
 {
     std::mutex mtxFrameHandle{};
@@ -382,7 +373,8 @@ Result slSetFeatureLoaded(sl::Feature feature, bool enabled)
     SL_EXCEPTION_HANDLE_END_RETURN(Result::eErrorExceptionHandler);
 }
 
-Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer)
+Result slSetTagCommon(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags,
+    sl::CommandBuffer* cmdBuffer, bool useResourceTaggingForFrame, const sl::FrameToken& frame = FrameHandleImplementation{})
 {
     //! IMPORTANT:
     //! 
@@ -398,8 +390,33 @@ Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags,
     const sl::plugin_manager::FeatureContext* ctx;
     SL_CHECK(slValidateFeatureContext(kFeatureCommon, ctx));
     if (!tags || numTags == 0) return Result::eErrorInvalidParameter;
-    return ctx->setTag(viewport, tags, numTags, cmdBuffer);
+    return (useResourceTaggingForFrame ? ctx->setTagForFrame(frame, viewport, tags, numTags, cmdBuffer)
+        : ctx->setTag(viewport, tags, numTags, cmdBuffer));
     SL_EXCEPTION_HANDLE_END_RETURN(Result::eErrorExceptionHandler);
+}
+
+Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer)
+{
+    if (plugin_manager::getInterface()->getPreferences().flags & PreferenceFlags::eUseFrameBasedResourceTagging)
+    {
+        SL_LOG_ERROR("'PreferenceFlag::eUseFrameBasedResourceTagging' flag is specified in sl::Preferences but slSetTagForFrame API is not called!");
+        return Result::eErrorInvalidIntegration;
+    }
+    SL_LOG_WARN_ONCE("slSetTag API has now been deprecated. Please consider using frame-based version slSetTagForFrame API and setting flag \
+sl::PreferenceFlags flag eUseResourceTaggingForFrame for the same!");
+
+    return slSetTagCommon(viewport, tags, numTags, cmdBuffer, false);
+}
+
+Result slSetTagForFrame(const sl::FrameToken& frame, const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer)
+{
+    if ((plugin_manager::getInterface()->getPreferences().flags & PreferenceFlags::eUseFrameBasedResourceTagging) == 0)
+    {
+        SL_LOG_ERROR("'slSetTagForFrame' SL API is called but 'PreferenceFlag::eUseFrameBasedResourceTagging' flag is not set!");
+        return Result::eErrorInvalidIntegration;
+    }
+
+    return slSetTagCommon(viewport, tags, numTags, cmdBuffer, true, frame);
 }
 
 Result slSetConstants(const Constants& values, const FrameToken& frame, const ViewportHandle& viewport)

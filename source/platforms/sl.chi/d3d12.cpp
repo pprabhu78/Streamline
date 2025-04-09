@@ -2551,6 +2551,17 @@ ComputeStatus D3D12::endProfilingQueue(CommandQueue cmdQueue)
     return ComputeStatus::eOk;
 }
 
+bool D3D12::signalCPUFence(Fence fence, uint64_t syncValue)
+{
+    auto d3d12Fence = ((ID3D12Fence*)fence);
+    if (FAILED(d3d12Fence->Signal(syncValue)))
+    {
+        SL_LOG_ERROR("Failed to signal fence from CPU");
+        return false;
+    }
+    return true;
+}
+
 int D3D12::destroyResourceDeferredImpl(const Resource resource)
 {   
     auto it = m_resourceData.find(resource->native);

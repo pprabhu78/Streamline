@@ -22,11 +22,6 @@
 
 #include <unordered_set>
 
-// sl_hooks.h keys off of this to know that Vulkan is in use.  Normally this is defined in vulkan_core.h when an
-// app compiles it in.  In the case here, an early inclusion of sl_hooks.h (before vulkan.h) leads to it not being
-// defined inside of SL itself.  This works around that issue
-#define VK_VERSION_1_0 1
-
 #include "include/sl.h"
 #include "source/core/sl.api/internal.h"
 #include "source/core/sl.log/log.h"

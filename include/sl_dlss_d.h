@@ -31,12 +31,23 @@ enum class DLSSDPreset : uint32_t
 {
     //! Default behavior, may or may not change after an OTA
     eDefault,
-    ePresetA,
-    ePresetB,
-    ePresetC,
-    ePresetD,
-    ePresetE,
-    ePresetG,
+    ePresetA,   // Deprecated
+    ePresetB,   // Deprecated
+    ePresetC,   // Deprecated
+    ePresetD,   // Default model (transformer)
+    ePresetE,   // Latest transformer model (must use if DoF guide is needed)
+    ePresetF,   // Reverts to default
+    ePresetG,   // Reverts to default
+    ePresetH,   // Reverts to default
+    ePresetI,   // Reverts to default
+    ePresetJ,   // Reverts to default
+    ePresetK,   // Reverts to default
+    ePresetL,   // Reverts to default
+    ePresetM,   // Reverts to default. Not recommended to use
+    ePresetN,   // Reverts to default. Not recommended to use
+    ePresetO,   // Reverts to default. Not recommended to use
+
+    eCount
 };
 
 enum class DLSSDNormalRoughnessMode : uint32_t

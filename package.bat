@@ -276,6 +276,8 @@ copy %src%\docs\media\Validation.png %dest%\docs\media
 
 copy %src%\docs\Streamline*.pdf %dest%\docs
 
+copy "%src%\docs\DLSS-RR Integration Guide.pdf" %dest%\docs
+copy "%src%\docs\DLSS Programming Guide.pdf" %dest%\docs
 
 :: README AND LICENSES
 copy %src%\README.md             %dest% /Y

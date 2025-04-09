@@ -324,7 +324,9 @@ public:
     virtual ComputeStatus getResourceDescription(Resource InResource, ResourceDescription &OutDesc) override final;
 
     virtual ComputeStatus startTrackingResource(uint64_t uid, Resource resource) override final { return ComputeStatus::eOk; }
+    virtual ComputeStatus startTrackingResource(uint32_t frameId, uint64_t uid, Resource resource) override final { return ComputeStatus::eOk; }
     virtual ComputeStatus stopTrackingResource(uint64_t uid, Resource dbgResource) override final { return ComputeStatus::eOk; }
+    virtual ComputeStatus stopTrackingResource(uint32_t frameId, uint64_t uid, Resource dbgResource) override final { return ComputeStatus::eOk; }
 
     virtual ComputeStatus mapResource(CommandList cmdList, Resource resource, void*& data, uint32_t subResource = 0, uint64_t offset = 0, uint64_t totalBytes = UINT64_MAX) override final;
     virtual ComputeStatus unmapResource(CommandList cmdList, Resource resource, uint32_t subResource) override final;
@@ -340,6 +342,8 @@ public:
 
     virtual ComputeStatus beginPerfSection(CommandList cmdList, const char *section, unsigned int node, bool reset = false) override;
     virtual ComputeStatus endPerfSection(CommandList cmdList, const char *section, float &avgTimeMS, unsigned int node) override;
+
+    virtual bool signalCPUFence(Fence fence, uint64_t syncValue) override final;
 
     virtual ComputeStatus setSleepMode(const ReflexOptions& consts) override final;
     virtual ComputeStatus getSleepStatus(ReflexState& settings) override final;

@@ -261,6 +261,7 @@ EXPORTS
 	slAllocateResources
 	slFreeResources
 	slSetTag
+	slSetTagForFrame
 	slGetFeatureRequirements
 	slGetFeatureVersion
 	slUpgradeInterface

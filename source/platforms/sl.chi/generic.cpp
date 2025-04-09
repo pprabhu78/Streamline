@@ -311,6 +311,17 @@ ComputeStatus Generic::shutdown()
             ((IUnknown*)cachedResource.second)->Release();
         }
         m_resourceTrackMap.clear();
+
+        for (auto& frameResourceMap : m_frameResourceTrackingMap)
+        {
+            for (auto& cachedResource : frameResourceMap.second)
+            {
+                ((IUnknown*)cachedResource.second)->Release();
+                cachedResource.second = nullptr;
+            }
+            frameResourceMap.second.clear();
+        }
+        m_frameResourceTrackingMap.clear();
     }
 
     CHI_CHECK(collectGarbage(UINT_MAX));
@@ -385,6 +396,24 @@ ComputeStatus Generic::startTrackingResource(uint64_t uid, Resource resource)
     return ComputeStatus::eOk;
 }
 
+ComputeStatus Generic::startTrackingResource(uint32_t frameId, uint64_t uid, Resource resource)
+{
+    // Make sure we are thread safe
+    std::scoped_lock lock(m_mutexResourceTrack);
+
+    if (resource != nullptr && resource->native != nullptr)
+    {
+        // NOTE: This covers d3d11/d3d12, VK currently does NOP here
+        auto cachedResource = (IUnknown*)(resource->native);
+        auto refCount = cachedResource->AddRef();
+        m_frameResourceTrackingMap[frameId][uid] = cachedResource;
+        //std::wstring name = getDebugName(cachedResource);
+        //SL_LOG_VERBOSE("Start tracking 0x%llx '%S' ref count %d", cachedResource, name.c_str(), refCount);
+    }
+
+    return ComputeStatus::eOk;
+}
+
 ComputeStatus Generic::stopTrackingResource(uint64_t id, Resource dbgResource)
 {
     // Make sure we are thread safe
@@ -401,6 +430,40 @@ ComputeStatus Generic::stopTrackingResource(uint64_t id, Resource dbgResource)
         cachedResource->Release();
         m_resourceTrackMap.erase(it);
     }
+    return ComputeStatus::eOk;
+}
+
+ComputeStatus Generic::stopTrackingResource(uint32_t frameId, uint64_t id, Resource dbgResource)
+{
+    // Make sure we are thread safe
+    std::scoped_lock lock(m_mutexResourceTrack);
+
+    IUnknown* cachedResource{};
+    std::map<uint32_t, ResourceTrackingMap>::const_iterator frameMapIt{};
+    ResourceTrackingMap::const_iterator resourceMapIt{};
+    if (frameMapIt = m_frameResourceTrackingMap.find(frameId); frameMapIt != m_frameResourceTrackingMap.end())
+    {
+        if (resourceMapIt = m_frameResourceTrackingMap[frameId].find(id); resourceMapIt != m_frameResourceTrackingMap[frameId].end())
+        {
+            cachedResource = m_frameResourceTrackingMap[frameId][id];
+        }
+    }
+
+    if (cachedResource != nullptr)
+    {
+        assert(cachedResource == dbgResource->native ||
+            dbgResource->native == nullptr); // startTracking() and stopTracking() is called for different resources?
+        // Note that here we could easily hold last reference and that is fine, host destroys tag and calls setTag(null)
+        // NOTE: This covers d3d11/d3d12, VK currently does NOP here
+        cachedResource->Release();
+        cachedResource = m_frameResourceTrackingMap[frameId][id] = nullptr;
+        m_frameResourceTrackingMap[frameId].erase(resourceMapIt);
+        if (m_frameResourceTrackingMap[frameId].empty())
+        {
+            m_frameResourceTrackingMap.erase(frameMapIt);
+        }
+    }
+
     return ComputeStatus::eOk;
 }
 

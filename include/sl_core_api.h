@@ -55,7 +55,12 @@ using PFun_slSetFeatureLoaded = sl::Result(sl::Feature feature, bool loaded);
 using PFun_slEvaluateFeature = sl::Result(sl::Feature feature, const sl::FrameToken& frame, const sl::BaseStructure** inputs, uint32_t numInputs, sl::CommandBuffer* cmdBuffer);
 using PFun_slAllocateResources = sl::Result(sl::CommandBuffer* cmdBuffer, sl::Feature feature, const sl::ViewportHandle& viewport);
 using PFun_slFreeResources = sl::Result(sl::Feature feature, const sl::ViewportHandle& viewport);
-using PFun_slSetTag = sl::Result(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
+using PFun_slSetTag
+#if __cplusplus >= 201402L
+[[deprecated("Use the version of this function that takes a sl::FrameToken instead - slSetTagForFrame and set sl::PreferenceFlags::eUseFrameBasedResourceTagging.")]]
+#endif
+= sl::Result(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
+using PFun_slSetTagForFrame = sl::Result(const sl::FrameToken& frame, const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
 using PFun_slGetFeatureRequirements = sl::Result(sl::Feature feature, sl::FeatureRequirements& requirements);
 using PFun_slGetFeatureVersion = sl::Result(sl::Feature feature, sl::FeatureVersion& version);
 using PFun_slUpgradeInterface = sl::Result(void** baseInterface);
@@ -128,6 +133,25 @@ SL_API sl::Result slIsFeatureLoaded(sl::Feature feature, bool& loaded);
 //! This method is NOT thread safe and requires DX/VK device to be created before calling it.
 SL_API sl::Result slSetFeatureLoaded(sl::Feature feature, bool loaded);
 
+//! NOTE: sl::PreferenceFlags::eUseFrameBasedResourceTagging must be set when using this API.
+//! Tags resource globally
+//!
+//! Call this method to tag the appropriate buffers in global scope.
+//!
+//! @param frame Specifies the frame this tag applies to. Frame token can be obtained using slGetNewFrameToken API.
+//! @param viewport Specifies viewport this tag applies to
+//! @param tags Pointer to resources tags, set to null to remove the specified tag
+//! @param numTags Number of resource tags in the provided list
+//! @param cmdBuffer Command buffer to use (optional and can be null if ALL tags are null or have eValidUntilPresent life-cycle)
+//! @return sl::ResultCode::eOk if successful, error code otherwise (see sl_result.h for details)
+//!
+//! IMPORTANT: GPU payload that generates content for the provided tag(s) MUST be either already submitted to the provided command buffer 
+//! or some other command buffer which is guaranteed, by the host application, to be executed BEFORE the provided command buffer.
+//! 
+//! This method is thread safe and requires DX/VK device to be created before calling it.
+SL_API sl::Result slSetTagForFrame(const sl::FrameToken& frame, const sl::ViewportHandle& viewport, const sl::ResourceTag* resources, uint32_t numResources, sl::CommandBuffer* cmdBuffer);
+
+//! NOTE: This API has now been DEPRECATED in favor of the new slSetTagForFrame API above.
 //! Tags resource globally
 //!
 //! Call this method to tag the appropriate buffers in global scope.
@@ -142,7 +166,11 @@ SL_API sl::Result slSetFeatureLoaded(sl::Feature feature, bool loaded);
 //! or some other command buffer which is guaranteed, by the host application, to be executed BEFORE the provided command buffer.
 //! 
 //! This method is thread safe and requires DX/VK device to be created before calling it.
-SL_API sl::Result slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
+SL_API sl::Result
+#if __cplusplus >= 201402L
+[[deprecated("Use the version of this function that takes a sl::FrameToken instead - slSetTagForFrame and set sl::PreferenceFlags::eUseFrameBasedResourceTagging.")]]
+#endif
+slSetTag(const sl::ViewportHandle& viewport, const sl::ResourceTag* tags, uint32_t numTags, sl::CommandBuffer* cmdBuffer);
 
 //! Sets common constants.
 //!
@@ -211,6 +239,8 @@ SL_API sl::Result slAllocateResources(sl::CommandBuffer* cmdBuffer, sl::Feature 
 //! This method is NOT thread safe and requires DX/VK device to be created before calling it.
 SL_API sl::Result slFreeResources(sl::Feature feature, const sl::ViewportHandle& viewport);
 
+//! NOTE: sl::PreferenceFlags::eUseFrameBasedResourceTagging must be set when using this API to do
+//! frame-based resource tagging for multiple frames in flight at the same time.
 //! Evaluates feature
 //! 
 //! Use this method to mark the section in your rendering pipeline

@@ -104,7 +104,7 @@ namespace latency
 {
 
 constexpr const char* kCurrentFrame = "sl.param.latency.frame";
-constexpr const char* kMarkerFrame = "sl.param.latency.markerFrame";
+constexpr const char* kMarkerPresentFrame = "sl.param.latency.markerPresentFrame";
 //! DEPRECATED (reflex-pcl):
 constexpr const char* kPFunSetLatencyStatsMarker = "sl.param.latency.setLatencyStatsMarker";
 

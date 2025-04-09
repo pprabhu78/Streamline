@@ -400,7 +400,7 @@ Result dlssBeginEvent(chi::CommandList pCmdList, const common::EventData& data, 
 
                 // Optional
                 CommonResource exposure = {};
-                getTaggedResource(kBufferTypeExposure, exposure, ctx.viewport->id, true, inputs, numInputs);
+                getTaggedResource(kBufferTypeExposure, exposure, data.frame, ctx.viewport->id, true, inputs, numInputs);
 
                 if ((ctx.viewport->consts.structVersion >= sl::kStructVersion2 && ctx.viewport->consts.useAutoExposure) || !exposure)
                 {
@@ -413,10 +413,10 @@ Result dlssBeginEvent(chi::CommandList pCmdList, const common::EventData& data, 
                 CommonResource depth{};
                 CommonResource mvec{};
 
-                SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, ctx.viewport->id, false, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, ctx.viewport->id, false, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeDepth, depth, ctx.viewport->id, false, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, data.frame, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, data.frame, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeDepth, depth, data.frame, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, data.frame, ctx.viewport->id, false, inputs, numInputs));
 
                 auto colorInExt = colorIn.getExtent();
                 auto colorOutExt = colorOut.getExtent();
@@ -505,19 +505,19 @@ Result dlssEndEvent(chi::CommandList pCmdList, const common::EventData& data, co
             CommonResource particleMask{};
 
             // Mandatory
-            SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeDepth, depth, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeDepth, depth, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, data.frame, ctx.viewport->id, false, inputs, numInputs));
 
             // Optional
-            getTaggedResource(kBufferTypeTransparencyHint, transparency, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeExposure, exposure, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeAnimatedTextureHint, animTexture, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeReflectionMotionVectors, mvecReflections, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeRaytracingDistance, rayTraceDist, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeBiasCurrentColorHint, currentColorBias, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeParticleHint, particleMask, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeTransparencyHint, transparency, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeExposure, exposure, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeAnimatedTextureHint, animTexture, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeReflectionMotionVectors, mvecReflections, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeRaytracingDistance, rayTraceDist, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeBiasCurrentColorHint, currentColorBias, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeParticleHint, particleMask, data.frame, ctx.viewport->id, true, inputs, numInputs);
 
             if (!depth || !mvec || !colorIn || !colorOut)
             {

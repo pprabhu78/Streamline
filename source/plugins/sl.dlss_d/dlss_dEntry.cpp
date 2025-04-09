@@ -411,11 +411,11 @@ Result dlssdBeginEvent(chi::CommandList pCmdList, const common::EventData& data,
                 CommonResource hwDepth{};
                 CommonResource mvec{};
 
-                SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, ctx.viewport->id, false, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, ctx.viewport->id, false, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeLinearDepth, linearDepth, ctx.viewport->id, true, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeDepth, hwDepth, ctx.viewport->id, true, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, data.frame, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, data.frame, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeLinearDepth, linearDepth, data.frame, ctx.viewport->id, true, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeDepth, hwDepth, data.frame, ctx.viewport->id, true, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, data.frame, ctx.viewport->id, false, inputs, numInputs));
 
                 CommonResource& depth = linearDepth ? linearDepth : hwDepth;
 
@@ -548,59 +548,63 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
             CommonResource colorBeforeDepthOfField{};
             CommonResource colorAfterDepthOfField{};
             CommonResource disocclusionMask{};
+            CommonResource scalingOutputAlpha{};
+            CommonResource alpha{};
 
-            SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeDepth, hwDepth, ctx.viewport->id, true, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeLinearDepth, linearDepth, ctx.viewport->id, true, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeAlbedo, albedo, ctx.viewport->id, false, inputs, numInputs));
-            SL_CHECK(getTaggedResource(kBufferTypeSpecularAlbedo, specularAlbedo, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeScalingInputColor, colorIn, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeScalingOutputColor, colorOut, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeDepth, hwDepth, data.frame, ctx.viewport->id, true, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeLinearDepth, linearDepth, data.frame, ctx.viewport->id, true, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeMotionVectors, mvec, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeAlbedo, albedo, data.frame, ctx.viewport->id, false, inputs, numInputs));
+            SL_CHECK(getTaggedResource(kBufferTypeSpecularAlbedo, specularAlbedo, data.frame, ctx.viewport->id, false, inputs, numInputs));
             if (ctx.viewport->consts.normalRoughnessMode == DLSSDNormalRoughnessMode::ePacked)
             {
-                SL_CHECK(getTaggedResource(kBufferTypeNormalRoughness, normals, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeNormalRoughness, normals, data.frame, ctx.viewport->id, false, inputs, numInputs));
             }
             else
             {
-                SL_CHECK(getTaggedResource(kBufferTypeNormals, normals, ctx.viewport->id, false, inputs, numInputs));
-                SL_CHECK(getTaggedResource(kBufferTypeRoughness, roughness, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeNormals, normals, data.frame, ctx.viewport->id, false, inputs, numInputs));
+                SL_CHECK(getTaggedResource(kBufferTypeRoughness, roughness, data.frame, ctx.viewport->id, false, inputs, numInputs));
             }
 
-            getTaggedResource(kBufferTypeReflectedAlbedo, reflectedAlbedo, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorBeforeParticles, colorBeforeParticles, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorBeforeTransparency, colorBeforeTransparency, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorBeforeFog, colorBeforeFog, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeDiffuseHitDistance, diffuseHitDistance, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeSpecularHitDistance, specularHitDistance, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeDiffuseRayDirection, diffuseRayDirection, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeSpecularRayDirection, specularRayDirection, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeDiffuseRayDirectionHitDistance, diffuseRayDirectionHitDistance, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeSpecularRayDirectionHitDistance, specularRayDirectionHitDistance, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeHiResDepth, hiResDepth, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeSpecularMotionVectors, specularMotionVector, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeTransparencyHint, transparency, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeExposure, exposure, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeBiasCurrentColorHint, biasCurrentColor, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeParticleHint, particle, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeAnimatedTextureHint, animTexture, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypePosition, positionViewSpace, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeRaytracingDistance, rayTraceDist, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeReflectionMotionVectors, mvecReflections, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeTransparencyLayer, transparencyLayer, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeTransparencyLayerOpacity, transparencyLayerOpacity, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorAfterParticles, colorAfterParticles, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorAfterTransparency, colorAfterTransparency, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorAfterFog, colorAfterFog, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeScreenSpaceSubsurfaceScatteringGuide, screenSpaceSubsurfaceScatteringGuide, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorBeforeScreenSpaceSubsurfaceScattering, colorBeforeScreenSpaceSubsurfaceScattering, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorAfterScreenSpaceSubsurfaceScattering, colorAfterScreenSpaceSubsurfaceScattering, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeScreenSpaceRefractionGuide, screenSpaceRefractionGuide, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorBeforeScreenSpaceRefraction, colorBeforeScreenSpaceRefraction, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorAfterScreenSpaceRefraction, colorAfterScreenSpaceRefraction, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeDepthOfFieldGuide, depthOfFieldGuide, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorBeforeDepthOfField, colorBeforeDepthOfField, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeColorAfterDepthOfField, colorAfterDepthOfField, ctx.viewport->id, true, inputs, numInputs);
-            getTaggedResource(kBufferTypeDisocclusionMask, disocclusionMask, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeReflectedAlbedo, reflectedAlbedo, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorBeforeParticles, colorBeforeParticles, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorBeforeTransparency, colorBeforeTransparency, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorBeforeFog, colorBeforeFog, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeDiffuseHitDistance, diffuseHitDistance, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeSpecularHitDistance, specularHitDistance, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeDiffuseRayDirection, diffuseRayDirection, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeSpecularRayDirection, specularRayDirection, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeDiffuseRayDirectionHitDistance, diffuseRayDirectionHitDistance, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeSpecularRayDirectionHitDistance, specularRayDirectionHitDistance, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeHiResDepth, hiResDepth, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeSpecularMotionVectors, specularMotionVector, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeTransparencyHint, transparency, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeExposure, exposure, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeBiasCurrentColorHint, biasCurrentColor, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeParticleHint, particle, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeAnimatedTextureHint, animTexture, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypePosition, positionViewSpace, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeRaytracingDistance, rayTraceDist, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeReflectionMotionVectors, mvecReflections, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeTransparencyLayer, transparencyLayer, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeTransparencyLayerOpacity, transparencyLayerOpacity, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorAfterParticles, colorAfterParticles, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorAfterTransparency, colorAfterTransparency, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorAfterFog, colorAfterFog, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeScreenSpaceSubsurfaceScatteringGuide, screenSpaceSubsurfaceScatteringGuide, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorBeforeScreenSpaceSubsurfaceScattering, colorBeforeScreenSpaceSubsurfaceScattering, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorAfterScreenSpaceSubsurfaceScattering, colorAfterScreenSpaceSubsurfaceScattering, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeScreenSpaceRefractionGuide, screenSpaceRefractionGuide, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorBeforeScreenSpaceRefraction, colorBeforeScreenSpaceRefraction, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorAfterScreenSpaceRefraction, colorAfterScreenSpaceRefraction, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeDepthOfFieldGuide, depthOfFieldGuide, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorBeforeDepthOfField, colorBeforeDepthOfField, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeColorAfterDepthOfField, colorAfterDepthOfField, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeDisocclusionMask, disocclusionMask, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeScalingOutputAlpha, scalingOutputAlpha, data.frame, ctx.viewport->id, true, inputs, numInputs);
+            getTaggedResource(kBufferTypeAlpha, alpha, data.frame, ctx.viewport->id, true, inputs, numInputs);
 
             CommonResource& depth = linearDepth ? linearDepth : hwDepth;
 
@@ -654,6 +658,8 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
             sl::Extent colorBeforeDepthOfFieldExt = colorBeforeDepthOfField.getExtent();
             sl::Extent colorAfterDepthOfFieldExt = colorAfterDepthOfField.getExtent();
             sl::Extent disocclusionMaskExt = disocclusionMask.getExtent();
+            sl::Extent scalingOutputAlphaExt = scalingOutputAlpha.getExtent();
+            sl::Extent alphaExt = alpha.getExtent();
 
 #ifdef SL_CAPTURE
 
@@ -742,6 +748,8 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
                 ctx.cacheState(colorBeforeDepthOfField, colorBeforeDepthOfField.getState());
                 ctx.cacheState(colorAfterDepthOfField, colorAfterDepthOfField.getState());
                 ctx.cacheState(disocclusionMask, disocclusionMask.getState());
+                ctx.cacheState(scalingOutputAlpha, scalingOutputAlpha.getState());
+                ctx.cacheState(alpha, alpha.getState());
 
                 unsigned int renderWidth = colorInExt.width;
                 unsigned int renderHeight = colorInExt.height;
@@ -868,6 +876,8 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
                         {colorBeforeDepthOfField, chi::ResourceState::eTextureRead, ctx.cachedStates[colorBeforeDepthOfField]},
                         {colorAfterDepthOfField, chi::ResourceState::eTextureRead, ctx.cachedStates[colorAfterDepthOfField]},
                         {disocclusionMask, chi::ResourceState::eTextureRead, ctx.cachedStates[disocclusionMask]},
+                        {scalingOutputAlpha, chi::ResourceState::eTextureRead, ctx.cachedStates[scalingOutputAlpha]},
+                        {alpha, chi::ResourceState::eTextureRead, ctx.cachedStates[alpha]},
                     };
                     ctx.compute->transitionResources(pCmdList, transitions, (uint32_t)countof(transitions), &revTransitions);
 
@@ -929,6 +939,8 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
                         ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_ColorBeforeDepthOfField, ctx.cachedVkResource(colorBeforeDepthOfField));
                         ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_ColorAfterDepthOfField, ctx.cachedVkResource(colorAfterDepthOfField));
                         ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_DisocclusionMask, ctx.cachedVkResource(disocclusionMask));
+                        ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_Alpha, ctx.cachedVkResource(alpha));
+                        ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_OutputAlpha, ctx.cachedVkResource(scalingOutputAlpha));
 
                     }
                     else
@@ -976,6 +988,8 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
                         ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_ColorBeforeDepthOfField, (void*)colorBeforeDepthOfField);
                         ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_ColorAfterDepthOfField, (void*)colorAfterDepthOfField);
                         ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_DisocclusionMask, (void*)disocclusionMask);
+                        ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_OutputAlpha, (void*)scalingOutputAlpha);
+                        ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_Alpha, (void*)alpha);
                     }
 
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_Input_Color_Subrect_Base_X, colorInExt.left);
@@ -1046,6 +1060,10 @@ Result dlssdEndEvent(chi::CommandList pCmdList, const common::EventData& data, c
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_ColorAfterDepthOfField_Subrect_Base_Y, colorAfterDepthOfFieldExt.top);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_DisocclusionMask_Subrect_Base_X, disocclusionMaskExt.left);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_DisocclusionMask_Subrect_Base_Y, disocclusionMaskExt.top);
+                    ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_OutputAlpha_Subrect_Base_X, scalingOutputAlphaExt.left);
+                    ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_OutputAlpha_Subrect_Base_Y, scalingOutputAlphaExt.top);
+                    ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_Alpha_Subrect_Base_X, alphaExt.left);
+                    ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSSD_Alpha_Subrect_Base_Y, alphaExt.top);
 
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_WORLD_TO_VIEW_MATRIX, &ctx.viewport->consts.worldToCameraView);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_VIEW_TO_CLIP_MATRIX, &ctx.commonConsts->cameraViewToClip);

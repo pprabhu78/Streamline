@@ -37,7 +37,11 @@ typedef struct ID3D11Texture2D  ID3D11Texture2D;
 typedef struct ID3D12Resource   ID3D12Resource;
 
 // Forward declarations matching MS and VK specs
-enum VkResult;
+#ifdef VK_VERSION_1_0
+using SL_VKResult = VkResult;
+#else
+using SL_VKResult = int;
+#endif
 using HRESULT = long;
 
 namespace sl {
@@ -188,6 +192,8 @@ constexpr BufferType kBufferTypeDepthOfFieldGuide = 64;
 constexpr BufferType kBufferTypeColorBeforeDepthOfField = 65;
 //! Optional - Color buffer after Depth of Field (for research purposes)
 constexpr BufferType kBufferTypeColorAfterDepthOfField = 66;
+//! Optional - Color buffer that overrides the alpha channel of kBufferTypeScalingOutputColor
+constexpr BufferType kBufferTypeScalingOutputAlpha  = 67;
 //! Features supported with this SDK
 //! 
 //! IMPORTANT: Each feature must use a unique id
@@ -468,7 +474,7 @@ struct APIError
     union
     {
         HRESULT hres;
-        VkResult vkRes;
+        SL_VKResult vkRes;
     };
 };
 //! Returns an error returned by DXGI or Vulkan API calls 'vkQueuePresentKHR' and 'vkAcquireNextImageKHR'
@@ -501,6 +507,10 @@ enum class PreferenceFlags : uint64_t
     //! Optional - Enables loading of plugins downloaded Over The Air (OTA), to
     //! be used in conjunction with the eAllowOTA flag.
     eLoadDownloadedPlugins = 1 << 6,
+
+    //! Optional - allow tagging of resources for frame. This helps distinguish whether slEvaluateFeature needs to do frame-based tagging
+    //! of resources which wasn't the case earlier.
+    eUseFrameBasedResourceTagging = 1 << 7,
 };
 
 SL_ENUM_OPERATORS_64(PreferenceFlags)

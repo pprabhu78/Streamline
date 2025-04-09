@@ -51,6 +51,7 @@ struct KernelDataD3D11 : public KernelDataBase
 {
     ID3D11ComputeShader* shader = {};
     std::map<uint32_t, ID3D11Buffer*> constBuffers = {};
+    void destroy();
 };
 
 struct ResourceDriverDataD3D11
@@ -171,6 +172,8 @@ public:
     virtual ComputeStatus endPerfSection(CommandList cmdList, const char *key, float &OutAvgTimeMS, unsigned int node) override final;
     virtual ComputeStatus beginProfiling(CommandList cmdList, UINT metadata, const char* marker) override final;
     virtual ComputeStatus endProfiling(CommandList cmdList) override final;
+
+    virtual bool signalCPUFence(Fence fence, uint64_t syncValue) override final;
 
     virtual ComputeStatus notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type) override final;
     virtual ComputeStatus setAsyncFrameMarker(CommandQueue queue, PCLMarker marker, uint64_t frameId) override final;

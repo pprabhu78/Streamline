@@ -331,7 +331,9 @@ Result slSetData(const BaseStructure* inputs, CommandBuffer* cmdBuffer)
                 || (ctx.engine == EngineType::eUnity && pcl_marker == PCLMarker::eRenderSubmitEnd)
                 )
             {
-                api::getContext()->parameters->set(sl::param::latency::kMarkerFrame, *frame);
+                // This frame-id assists present-time SL features like DLSS FG and LW to detect id of the frame 
+                // being currently processed on the present thread.
+                api::getContext()->parameters->set(sl::param::latency::kMarkerPresentFrame, *frame);
                 updateStats(*frame);
 
                 // Mark the last frame we were active
@@ -720,9 +722,9 @@ sl::Result slReflexSetMarker(sl::PCLMarker marker, const sl::FrameToken& frame)
     sl::ReflexHelper inputs(marker);
     inputs.next = (BaseStructure*)&frame;
 
-    if (marker == sl::PCLMarker::eRenderSubmitStart && ctx.gameWaitCmdList && ctx.gameWaitFence && ctx.gameWaitSyncValue && ctx.compute->getCompletedValue(ctx.gameWaitFence) - 1 < ctx.gameWaitSyncValue)
+    if (marker == sl::PCLMarker::eRenderSubmitStart && ctx.gameWaitCmdList && ctx.gameWaitFence && ctx.gameWaitSyncValue && ctx.compute->getCompletedValue(ctx.gameWaitFence) < ctx.gameWaitSyncValue)
     {
-        ctx.gameWaitCmdList->waitGPUFence(ctx.gameWaitFence, ctx.gameWaitSyncValue - 1, chi::DebugInfo(__FILE__, __LINE__));
+        ctx.gameWaitCmdList->waitCPUFence(ctx.gameWaitFence, ctx.gameWaitSyncValue);
     }
 
     return slSetData(&inputs, nullptr);

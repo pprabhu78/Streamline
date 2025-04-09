@@ -5,7 +5,7 @@ Streamline - NIS
 >The focus of this guide is on using Streamline to integrate the NVIDIA Image Scaling (NIS) SDK into an application.  For more information about NIS itself, please visit the [NVIDIA Image Scaling SDK Github Page](https://github.com/NVIDIAGameWorks/NVIDIAImageScaling)  
 >For information on user interface considerations when using the NIS plugin, please see the ["RTX UI Developer Guidelines.pdf"](<RTX UI Developer Guidelines.pdf>) document included with this SDK.
 
-Version 2.7.2
+Version 2.7.30
 =======
 
 ### Introduction
@@ -124,7 +124,7 @@ sl::ResourceTag colorOutTag = sl::ResourceTag {&colorOut, sl::kBufferTypeScaling
 
 // Resources must be valid at this point and valid command list must be provided since resources are volatile
 sl::Resource inputs[] = {colorInTag, colorOutTag};
-slSetTag(viewport, inputs, _countof(inputs), cmdList);
+slSetTagForFrame(*currentFrame, viewport, inputs, _countof(inputs), cmdList);
 
 // SECOND SCENARIO
 
@@ -134,7 +134,7 @@ sl::ResourceTag colorOutTag = sl::ResourceTag {&colorOut, sl::kBufferTypeScaling
 
 // Resources are immutable so they are valid all the time, no need to provide command list since no copies need to be made
 std::vector<sl::Resource> inputs = {colorInTag, colorOutTag};
-slSetTag(viewport, inputs, _countof(inputs), cmdList);
+slSetTagForFrame(*currentFrame, viewport, inputs, _countof(inputs), cmdList);
 
 ```
 > **IMPORTANT**
@@ -172,7 +172,7 @@ On your rendering thread, call `slEvaluateFeature` at the appropriate location w
 // Make sure NIS is available and user selected this option in the UI
 if(useNIS) 
 {
-    // NOTE: We can provide all inputs here or separately using slSetTag or slNISSetOptions
+    // NOTE: We can provide all inputs here or separately using slSetTagForFrame or slNISSetOptions
 
     // Inform SL that NIS should be injected at this point for the specific viewport
     const sl::BaseStructure* inputs[] = {&myViewport};

@@ -639,7 +639,9 @@ public:
     virtual ComputeStatus dispatch(uint32_t blockX, uint32_t blockY, uint32_t blockZ = 1) = 0;
     
     virtual ComputeStatus startTrackingResource(uint64_t uid, Resource resource) = 0;
+    virtual ComputeStatus startTrackingResource(uint32_t frameId, uint64_t uid, Resource resource) = 0;
     virtual ComputeStatus stopTrackingResource(uint64_t uid, Resource dbgResource) = 0;
+    virtual ComputeStatus stopTrackingResource(uint32_t frameId, uint64_t uid, Resource dbgResource) = 0;
 
     // Hooks up back to the SL command list to restore its state
     virtual ComputeStatus restorePipeline(CommandList cmdList) = 0;
@@ -685,6 +687,8 @@ public:
     virtual ComputeStatus endProfiling(CommandList cmdList) = 0;
     virtual ComputeStatus beginProfilingQueue(CommandQueue cmdQueue, uint32_t metadata, const char* marker) = 0;
     virtual ComputeStatus endProfilingQueue(CommandQueue cmdQueue) = 0;
+
+    virtual bool signalCPUFence(Fence fence, uint64_t syncValue) = 0;
 
     // Latency API
     virtual ComputeStatus setSleepMode(const ReflexOptions& consts) = 0;
