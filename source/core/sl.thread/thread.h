@@ -207,25 +207,22 @@ public:
 
     std::cv_status flush(uint32_t timeout = 500)
     {
-        std::cv_status res = std::cv_status::no_timeout;
+        bool isTimeout = false;
 
         // Atomic swap to true and check that it was false so we don't flush
         // multiple times from different threads.
         if (!m_flush.exchange(true))
         {
             std::unique_lock<std::mutex> lock(m_mtx);
-            if (!m_work.empty())
+
+            isTimeout = !m_cvf.wait_for(lock, std::chrono::milliseconds(timeout), [this]() { return m_work.empty(); });
+            if (isTimeout)
             {
-                // Wait and free the lock
-                res = m_cvf.wait_for(lock, std::chrono::milliseconds(timeout));
-                if (res == std::cv_status::timeout)
-                {
-                    SL_LOG_WARN("Worker thread '%S' timed out", m_name.c_str());
-                }
+                SL_LOG_WARN("Worker thread '%S' timed out", m_name.c_str());
             }
             m_flush = false;
         }
-        return res;
+        return isTimeout ? std::cv_status::timeout : std::cv_status::no_timeout;
     }
 
     size_t getJobCount()

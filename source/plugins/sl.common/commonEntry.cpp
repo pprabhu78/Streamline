@@ -173,16 +173,27 @@ void getCommonTag(BufferType tagType, uint32_t frameId, uint32_t viewportId, Com
 
 void common::ResourceTaggingForFrame::recycleTags()
 {
+    // we want only one thread to enter this if() condition
+    if (++m_nRecyclingThreads == 1)
+    {
+        uint32_t curAppFrameIndex = UINT_MAX;
+        api::getContext()->parameters->get(sl::param::latency::kMarkerPresentFrame, &curAppFrameIndex);
+        // CPU optimization - execute all stuff inside the if() only once per frame
+        if (m_prevSeenAppFrameIndex != curAppFrameIndex || curAppFrameIndex == UINT_MAX)
+        {
+            m_prevSeenAppFrameIndex = curAppFrameIndex;
+            recycleTagsInternal(curAppFrameIndex);
+        }
+    }
+    --m_nRecyclingThreads;
+}
+
+void common::ResourceTaggingForFrame::recycleTagsInternal(uint32_t currFrameId)
+{
     auto& ctx = (*common::getContext());
 
     assert(ctx.pool != nullptr);
     assert(ctx.compute != nullptr);
-
-    // Recycle and end resource tracking of resource tags at the end of frame-present
-    // for the new tagging API as expected based on maximum lifecycle of tags.
-
-    uint32_t currFrameId{ UINT_MAX };
-    api::getContext()->parameters->get(sl::param::latency::kMarkerPresentFrame, &currFrameId);
 
     writeLock wLock1(frameResourceTagMapMutex);
     if (currFrameId == UINT_MAX)
@@ -201,7 +212,7 @@ void common::ResourceTaggingForFrame::recycleTags()
 
     for (auto frameMapIt = frameResourceTagMap.begin(); frameMapIt != frameResourceTagMap.end();)
     {
-        if (frameMapIt->first <= currFrameId)
+        if (currFrameId - frameMapIt->first > 1) // is it an old frame?
         {
             {
                 writeLock wLock2(frameMapIt->second.resourceTagContainerMutex);
@@ -466,6 +477,9 @@ common::ResourceTaggingGeneral::~ResourceTaggingGeneral()
 // frame-aware resource tagging internal functionality for tagging API slSetTagForFrame
 sl::Result common::ResourceTaggingForFrame::setTag(const sl::Resource* resource, BufferType tag, uint32_t id, const Extent* ext, ResourceLifecycle lifecycle, CommandBuffer* cmdBuffer, bool localTag, const PrecisionInfo* pi, const sl::FrameToken& frame)
 {
+    // here we're recycling the old tags
+    recycleTags();
+
     auto& ctx = (*common::getContext());
 
     assert(ctx.pool != nullptr);

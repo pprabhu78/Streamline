@@ -617,6 +617,10 @@ struct ResourceTaggingForFrame : public ResourceTaggingBase
     ~ResourceTaggingForFrame();
 
 private:
+    void recycleTagsInternal(uint32_t currAppFrameIndex);
+    std::atomic<uint32_t> m_nRecyclingThreads = 0;
+    uint32_t m_prevSeenAppFrameIndex = 0;
+
     std::mutex requiredTagMutex{};
     // frame-aware nested container of resources for each type of input resource tagged
     std::map<uint32_t, ProtectedResourceTagContainer> frameResourceTagMap{};

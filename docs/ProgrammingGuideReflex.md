@@ -5,7 +5,7 @@ Streamline - Reflex
 >The focus of this guide is on using Streamline to integrate Reflex into an application.  For more information about Reflex itself, please visit the [NVIDIA Developer Reflex Page][2].
 >For information on user interface considerations when using this plugin, please see the ["RTX UI Developer Guidelines.pdf"][1] document included with this SDK.
 
-Version 2.7.30
+Version 2.7.32
 =======
 
 Here is an overview list of sub-features in the Reflex plugin:

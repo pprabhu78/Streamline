@@ -3,7 +3,7 @@ Streamline - DLSS-G
 
 NVIDIA DLSS Frame Generation (“DLSS-FG” or “DLSS-G”) is an AI based technology that infers frames based on rendered frames coming from a game engine or rendering pipeline. This document explains how to integrate DLSS-G into a renderer.
 
-Version 2.7.30
+Version 2.7.32
 =======
 
 ### 0.0 Integration checklist

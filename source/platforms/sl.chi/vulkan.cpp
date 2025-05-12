@@ -67,6 +67,131 @@ void KernelDataVK::destroy(const VkLayerDispatchTable& ddt, VkDevice device)
     shaderModule = VK_NULL_HANDLE;
 }
 
+struct Allocator
+{
+    void init(VkCommandPool pAllocator, VkLayerDispatchTable* pDdt, ICompute* pCompute, VkDevice pDevice, std::string sDebugName)
+    {
+        destroy();
+
+        m_pAllocator = pAllocator;
+        m_pDdt = pDdt;
+        m_pCompute = pCompute;
+        m_pDevice = pDevice;
+        m_sDebugName = sDebugName;
+
+        // at all times we want to have at least one command buffer - because we have getCommandBuffer() function
+        TimedCommandBuffer cmdBuffer;
+        cmdBuffer.m_pBuffer = allocateNewCmdBuffer();
+        m_pCmdBuffers.push_back(cmdBuffer);
+    }
+
+    ~Allocator()
+    {
+        destroy();
+    }
+
+    void destroy()
+    {
+        for (uint32_t u = 0; u < m_pCmdBuffers.size(); ++u)
+        {
+            freeCmdBuffer(m_pCmdBuffers[u].m_pBuffer);
+        }
+        m_pCmdBuffers.resize(0);
+        if (m_pAllocator)
+        {
+            m_pDdt->DestroyCommandPool(m_pDevice, m_pAllocator, nullptr);
+        }
+        m_pAllocator = nullptr;
+        m_pDdt = nullptr;
+        m_pCompute = nullptr;
+        m_pDevice = nullptr;
+        m_sDebugName.clear();
+    }
+
+    VkCommandPool getCmdAllocator()
+    {
+        return m_pAllocator;
+    }
+
+    VkCommandBuffer &getLatestCommandBuffer()
+    {
+        return m_pCmdBuffers.rbegin()->m_pBuffer;
+    }
+
+    VkCommandBuffer beginCommandList(uint64_t signalledFenceValue, uint64_t completedFenceValue)
+    {
+        assert(m_pCmdBuffers.size() < 20); // why would we have some many command buffers? something seems wrong
+        // The command buffers are sorted according to the fence value.
+        // Find how many command buffers have already executed on the GPU
+        uint32_t nOldCommandLists = 0;
+        for ( ; ; ++nOldCommandLists)
+        {
+            if (nOldCommandLists >= m_pCmdBuffers.size())
+                break;
+            if (m_pCmdBuffers[nOldCommandLists].isInUse(completedFenceValue))
+            {
+                break;
+            }
+        }
+        TimedCommandBuffer cmdBuffer;
+        if (nOldCommandLists > 0)
+        {
+            for (uint32_t u = 1; u < nOldCommandLists; ++u) // free all buffers except one
+            {
+                freeCmdBuffer(m_pCmdBuffers[u].m_pBuffer);
+            }
+            cmdBuffer = m_pCmdBuffers[0];
+            m_pCmdBuffers.erase(m_pCmdBuffers.begin(), m_pCmdBuffers.begin() + nOldCommandLists);
+        }
+        else
+        {
+            cmdBuffer.m_pBuffer = allocateNewCmdBuffer();
+        }
+        cmdBuffer.m_fenceValueWhenFree = signalledFenceValue + 1;
+        m_pCmdBuffers.push_back(cmdBuffer);
+        return cmdBuffer.m_pBuffer;
+    }
+
+  private:
+    struct TimedCommandBuffer
+    {
+        bool isInUse(uint64_t completedFenceValue)
+        {
+            return completedFenceValue < m_fenceValueWhenFree;
+        }
+        VkCommandBuffer m_pBuffer = nullptr;
+        uint64_t m_fenceValueWhenFree = 0;
+    };
+
+    VkCommandBuffer allocateNewCmdBuffer()
+    {
+        const VkCommandBufferAllocateInfo allocInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                                       nullptr,
+                                                       m_pAllocator,
+                                                       VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                       1};
+        VkCommandBuffer cmdBuffer;
+        VK_CHECK_RN(m_pDdt->AllocateCommandBuffers(m_pDevice, &allocInfo, &cmdBuffer));
+        sl::Resource r;
+        r.native = cmdBuffer;
+        r.type = (ResourceType)ResourceType::eCommandBuffer;
+        m_pCompute->setDebugName(&r, (m_sDebugName + "_command_buffer").c_str());
+        return cmdBuffer;
+    }
+    void freeCmdBuffer(VkCommandBuffer cmdBuffer)
+    {
+        m_pDdt->FreeCommandBuffers(m_pDevice, m_pAllocator, 1, &cmdBuffer);
+    }
+
+    std::vector<TimedCommandBuffer> m_pCmdBuffers;
+
+    VkCommandPool m_pAllocator = nullptr;
+    VkLayerDispatchTable* m_pDdt = nullptr;
+    ICompute* m_pCompute = nullptr;
+    VkDevice m_pDevice = nullptr;
+    std::string m_sDebugName;
+};
+
 class CommandListContextVK : public ICommandListContext
 {
     struct WaitInfo
@@ -85,8 +210,8 @@ class CommandListContextVK : public ICommandListContext
     std::vector<VkSemaphore> m_acquireSemaphore{};  // binary semaphore correspondng to each swapchain buffer passed to swapchain-acquisition VK API.
     std::vector<VkFence> m_acquireFence{}; // Host-side (CPU) fence correspondng to each swapchain buffer passed to swapchain-acquisition to be able to do CPU wait.
     uint32_t m_acquireIndex{}; // indexes into m_acquireSemaphore and m_acquireFence list.
-    std::vector<VkCommandBuffer> m_cmdBuffer;
-    std::vector<VkCommandPool> m_allocator;
+
+    std::vector<Allocator> m_allocators;
     std::vector<VkSemaphore> m_fence;
     std::vector<uint64_t> m_fenceValue = {};
     bool m_cmdListIsRecording = false;
@@ -116,10 +241,9 @@ public:
         m_acquireSemaphore.resize(m_bufferCount);
         m_acquireFence.resize(m_bufferCount);
         m_acquireIndex = m_bufferCount - 1;
-        m_allocator.resize(m_bufferCount);
+        m_allocators.resize(m_bufferCount);
         m_fence.resize(m_bufferCount);
         m_fenceValue.resize(m_bufferCount);
-        m_cmdBuffer.resize(m_bufferCount);
     
         VkSemaphoreCreateInfo createInfo;
         createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -177,25 +301,16 @@ public:
                 m_compute->setDebugName(&r, (std::string(debugName) + "_semaphore").c_str());
             }
             {
+                VkCommandPool allocator{};
                 const VkCommandPoolCreateInfo createInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, queue->family };
-                VK_CHECK_RV(m_ddt.CreateCommandPool(m_device, &createInfo, nullptr, &m_allocator[i]));
+                VK_CHECK_RV(m_ddt.CreateCommandPool(m_device, &createInfo, nullptr, &allocator));
                 sl::Resource r;
-                r.native = m_allocator[i];
+                r.native = allocator;
                 r.type = (ResourceType)ResourceType::eCommandPool;
                 m_compute->setDebugName(&r, (std::string(debugName) + "_command_pool").c_str());
+                m_allocators[i].init(allocator, &m_ddt, m_compute, m_device, debugName);
             }
-            {
-                const VkCommandBufferAllocateInfo allocInfo =
-                {
-                    VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr,
-                    m_allocator[i], VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1
-                };
-                VK_CHECK_RV(m_ddt.AllocateCommandBuffers(m_device, &allocInfo, &m_cmdBuffer[i]));
-                sl::Resource r;
-                r.native = m_cmdBuffer[i];
-                r.type = (ResourceType)ResourceType::eCommandBuffer;
-                m_compute->setDebugName(&r, (std::string(debugName) + "_command_buffer").c_str());
-            }
+
         }
         
     }
@@ -206,8 +321,7 @@ public:
 
         for (uint32_t i = 0; i < m_bufferCount; i++)
         {
-            m_ddt.FreeCommandBuffers(m_device, m_allocator[i], 1, &m_cmdBuffer[i]);
-            m_ddt.DestroyCommandPool(m_device, m_allocator[i], nullptr);
+            m_allocators[i].destroy();
             m_ddt.DestroySemaphore(m_device, m_fence[i], nullptr);
             m_ddt.DestroyFence(m_device, m_acquireFence[i], NULL);
             m_ddt.DestroySemaphore(m_device, m_acquireSemaphore[i], nullptr);
@@ -215,10 +329,9 @@ public:
 
         m_ddt.DestroySemaphore(m_device, m_presentSemaphore, nullptr);
 
-        m_cmdBuffer.clear();
         m_fenceValue.clear();
         m_fence.clear();
-        m_allocator.clear();
+        m_allocators.clear();
         m_acquireFence.clear();
         m_acquireSemaphore.clear();
     }
@@ -227,7 +340,7 @@ public:
 
     CommandList getCmdList()
     {
-        return m_cmdBuffer[m_index];
+        return m_allocators[m_index].getLatestCommandBuffer();
     }
 
     CommandQueue getCmdQueue()
@@ -237,7 +350,7 @@ public:
 
     CommandAllocator getCmdAllocator()
     {
-        return m_allocator[m_index];
+        return m_allocators[m_index].getCmdAllocator();
     }
 
     Handle getFenceEvent()
@@ -260,19 +373,10 @@ public:
         auto idx = m_index;
         auto syncValue = m_fenceValue[m_index];
         
-        uint64_t completedValue;
-        VK_CHECK_RF(m_ddt.GetSemaphoreCounterValue(m_device, m_fence[idx], &completedValue));
-        if (completedValue < syncValue)
-        {
-            VkSemaphoreWaitInfo waitInfo;
-            waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-            waitInfo.pNext = NULL;
-            waitInfo.flags = 0;
-            waitInfo.semaphoreCount = 1;
-            waitInfo.pSemaphores = &m_fence[idx];
-            waitInfo.pValues = &syncValue;
-            VK_CHECK_RF(m_ddt.WaitSemaphores(m_device, &waitInfo, kMaxSemaphoreWaitUs));
-        }
+        uint64_t signalledFenceValue = m_fenceValue[idx];
+        uint64_t completedFenceValue;
+        VK_CHECK_RF(m_ddt.GetSemaphoreCounterValue(m_device, m_fence[idx], &completedFenceValue));
+        VkCommandBuffer cmdBuffer = m_allocators[idx].beginCommandList(signalledFenceValue, completedFenceValue);
 
         // One time usage since we wait for the last workload to finish
         const VkCommandBufferBeginInfo info =
@@ -280,7 +384,7 @@ public:
             VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr,
             VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr
         };
-        m_cmdListIsRecording = VK_SUCCESS == m_ddt.BeginCommandBuffer(m_cmdBuffer[idx], &info);
+        m_cmdListIsRecording = VK_SUCCESS == m_ddt.BeginCommandBuffer(cmdBuffer, &info);
 
         return m_cmdListIsRecording;
     }
@@ -295,7 +399,8 @@ public:
         // Helps with crash dumps if we lose device below by allowing correct execution of the begin/end command buffer logic
         m_cmdListIsRecording = false;
 
-        VK_CHECK_RF(m_ddt.EndCommandBuffer(m_cmdBuffer[m_index]));
+        VkCommandBuffer cmdBuffer = m_allocators[m_index].getLatestCommandBuffer();
+        VK_CHECK_RF(m_ddt.EndCommandBuffer(cmdBuffer));
 
         auto idx = m_index;
         uint64_t syncValue = m_fenceValue[m_index] + 1;
@@ -336,7 +441,7 @@ public:
         submitInfo.signalSemaphoreCount = (uint32_t)signalSemaphores.size();
         submitInfo.pSignalSemaphores = (VkSemaphore*)signalSemaphores.data();
         submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &m_cmdBuffer[idx];
+        submitInfo.pCommandBuffers = &cmdBuffer;
         submitInfo.pWaitDstStageMask = waitDstStageMask;
         VK_CHECK_RF(m_ddt.QueueSubmit(m_cmdQueue, 1, &submitInfo, info ? (VkFence)info->fence : nullptr));
 
@@ -595,7 +700,7 @@ public:
     int acquireNextBufferIndex(SwapChain chain, uint32_t& bufferIndex, Fence* waitSemaphore)
     {
         SwapChainVk* sc = (SwapChainVk*)chain;
-        const uint64_t timeout = 10 * 1000;
+        const uint64_t timeout = 2000000000; // 2 seconds
         bufferIndex = UINT32_MAX;
         // With VK it is important to always return the "error" code
         int res{};

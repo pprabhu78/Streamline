@@ -1,3 +1,11 @@
+======== Release 2.7.32 Entries ========
+
+    * Fixed a bug in `sl.dlss_g` where a worker-thread could time out and cause
+      a deadlock.
+
+    * Fixed a crash in `sl.dlss_g` where the presentation fence could time out
+      and inadvertently result in an active GPU command buffer being overwritten.
+
 ======== Release 2.7.30 Entries ========
 
     * Added support for `slSetTagForFrame()` which allows for frame-based
