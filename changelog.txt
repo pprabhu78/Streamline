@@ -1,5 +1,13 @@
 ======== Release 2.7.32 Entries ========
 
+    * Removed the following directories from the repository. Release packages
+      containing these binaries can be found at:
+      https://github.com/NVIDIA-RTX/Streamline/releases
+      - `bin`
+      - `lib`
+      - `symbols`
+      - `utils`
+
     * Fixed a bug in `sl.dlss_g` where a worker-thread could time out and cause
       a deadlock.
 
