@@ -293,16 +293,23 @@ public:
     virtual ComputeStatus createKernel(void *InCubinBlob, unsigned int InCubinBlobSize, const char* fileName, const char *EntryPoint, Kernel &OutKernel);
     virtual ComputeStatus destroyKernel(Kernel& kernel);
 
-    virtual ComputeStatus createCommandListContext(CommandQueue queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])  override final;
+    virtual ComputeStatus createCommandListContext(ChiCommandQueue* queue,
+                                                   uint32_t count,
+                                                   ICommandListContext*& ctx,
+                                                   const char friendlyName[]) override final;
     virtual ComputeStatus destroyCommandListContext(ICommandListContext* ctx) override final;
 
     virtual ComputeStatus createFence(FenceFlags flags, uint64_t initialValue, Fence& outFence, const char friendlyName[])  override final;
     virtual ComputeStatus destroyFence(Fence& fence) override final;
 
     uint64_t getCompletedValue(Fence fence) override final;
+    virtual WaitStatus waitCPUFence(Fence fence, uint64_t syncValue) override final;
 
-    virtual ComputeStatus createCommandQueue(CommandQueueType type, CommandQueue& queue, const char friendlyName[], uint32_t index) override final;
-    virtual ComputeStatus destroyCommandQueue(CommandQueue& queue) override final;
+    virtual ComputeStatus createCommandQueue(CommandQueueType type,
+                                             ChiCommandQueue*& queue,
+                                             const char friendlyName[],
+                                             uint32_t index) override final;
+    virtual ComputeStatus destroyCommandQueue(ChiCommandQueue* queue) override final;
 
     virtual ComputeStatus bindKernel(const Kernel InKernel);
     virtual ComputeStatus bindSharedState(CommandList InCmdList, unsigned int InNode);
@@ -350,7 +357,7 @@ public:
     virtual ComputeStatus getLatencyReport(ReflexState& settings) override final;
     virtual ComputeStatus sleep() override final;
     virtual ComputeStatus setReflexMarker(PCLMarker marker, uint64_t frameId) override final;
-    virtual ComputeStatus notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type) override final;
+    virtual ComputeStatus notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type) override final;
     virtual ComputeStatus setAsyncFrameMarker(CommandQueue queue, PCLMarker marker, uint64_t frameId) override final;
     virtual ComputeStatus setLatencyMarker(CommandQueue queue, PCLMarker marker, uint64_t frameId) override final;
 

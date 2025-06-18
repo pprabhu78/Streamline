@@ -373,6 +373,7 @@ Result dlssBeginEvent(chi::CommandList pCmdList, const common::EventData& data, 
                 ctx.ngxContext->releaseFeature(viewport.handle, "sl.dlss");
                 viewport.handle = {};
                 ctx.compute->destroyResource(viewport.mvec);
+                viewport.mvec = nullptr;
             }
 
             {
@@ -705,7 +706,6 @@ Result dlssEndEvent(chi::CommandList pCmdList, const common::EventData& data, co
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_MV_Scale_Y, (mvecPixelSpace ? 1.0f : (float)(consts->mvecScale.y * renderHeight)));
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_Jitter_Offset_X, consts->jitterOffset.x);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_Jitter_Offset_Y, consts->jitterOffset.y);
-                    ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_Sharpness, ctx.viewport->consts.sharpness);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_Pre_Exposure, ctx.viewport->consts.preExposure);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_DLSS_Exposure_Scale, ctx.viewport->consts.exposureScale);
                     ctx.ngxContext->params->Set(NVSDK_NGX_Parameter_Sharpness, ctx.viewport->consts.sharpness);

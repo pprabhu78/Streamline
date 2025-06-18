@@ -11,8 +11,8 @@
   "vkValidation": false,
   "forceProxies": false,
   "forceNonNVDA": false,
-  "trackEngineAllocations" : false
+  "trackEngineAllocations" : false,
   // To use, uncomment the following and set the appropriate paths
-  // "logPath": "N:/My/Log/Path",
+  "logPath": "C:/NGXLogs"
   // "pathToPlugins": "N:/My/Plugin/Path"
 }

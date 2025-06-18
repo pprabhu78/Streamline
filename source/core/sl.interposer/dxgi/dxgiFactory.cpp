@@ -56,7 +56,8 @@ UINT queryDevice(IUnknown*& device, Microsoft::WRL::ComPtr<IUnknown>& deviceProx
     if (Microsoft::WRL::ComPtr<ID3D12CommandQueue> cmdQueueD3D12Proxy; SUCCEEDED(device->QueryInterface(__uuidof(ID3D12CommandQueue), &cmdQueueD3D12Proxy)))
     {
         // Base interface, bypassed SL
-        SL_LOG_WARN("Detected base interface 'ID3D12CommandQueue' while expecting SL proxy - please use slUpgradeDevice to obtain SL proxies for DXGI/D3D interfaces");
+        if (sl::plugin_manager::getInterface()->isProxyNeeded("ID3D12CommandQueue"))
+            SL_LOG_WARN("Detected base interface 'ID3D12CommandQueue' while expecting SL proxy - please use slUpgradeDevice to obtain SL proxies for DXGI/D3D interfaces");
         device = cmdQueueD3D12Proxy.Get();
         deviceProxy = device;
         return 12;

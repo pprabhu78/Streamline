@@ -103,5 +103,6 @@ if exist .\_project\vs2022\streamline.sln (
 ) else if exist .\_project\vs2019\streamline.sln (
     msbuild .\_project\vs2019\streamline.sln /m /t:%bld% /property:Configuration=%cfg% /property:Platform=x64
 ) else (
+    echo WARNING vs2017 is deprecated and will be removed in SL 2.9
     msbuild .\_project\vs2017\streamline.sln /m /t:%bld% /property:Configuration=%cfg% /property:Platform=x64
 )

@@ -47,7 +47,6 @@
 #include "_artifacts/gitVersion.h"
 #include "include/sl_helpers.h"
 
-
 namespace sl
 {
 
@@ -226,6 +225,35 @@ public:
         return false;
     }
 
+    Result getFeatureSupportedExternalConfig(Feature feature) final
+    {
+        auto it = m_featureSupportedMap.find(feature);
+        if (it == m_featureSupportedMap.end())
+        {
+            std::string jsonConfig{};
+            if (!plugin_manager::getInterface()->getExternalFeatureConfig(feature, jsonConfig))
+            {
+                m_featureSupportedMap[feature] = Result::eErrorFeatureMissing;
+                SL_LOG_ERROR("'%s' is missing.", getFeatureAsStr(feature));
+                return Result::eErrorFeatureMissing;
+            }
+
+            // Any JSON parser can be used here
+            std::istringstream stream(jsonConfig);
+            nlohmann::json extCfg;
+            stream >> extCfg;
+            if (extCfg.contains("/feature/supported"_json_pointer) && !extCfg["feature"]["supported"])
+            {
+                SL_LOG_ERROR("'%s' is not supported.", getFeatureAsStr(feature));
+                m_featureSupportedMap[feature] = Result::eErrorFeatureNotSupported;
+                return Result::eErrorFeatureNotSupported;
+            }
+            m_featureSupportedMap[feature] = Result::eOk;
+        }
+
+        return m_featureSupportedMap[feature];
+    }
+
     virtual bool getLoadedFeatureConfigs(std::vector<json>& configList) const override final
     {
         for (auto plugin : m_plugins)
@@ -317,9 +345,11 @@ private:
 
     using PluginMap = std::map<Feature,Plugin*>;
     using ConfigMap = std::map<Feature, json>;
+    using FeatureSupportedMap = std::map<Feature, Result>;
 
     PluginMap m_featurePluginsMap;
     ConfigMap m_featureExternalConfigMap;
+    FeatureSupportedMap m_featureSupportedMap;
 
     int m_appId = 0;
     inline static PluginManagerStatus s_status = PluginManagerStatus::eUnknown;
@@ -847,13 +877,16 @@ Result PluginManager::loadPlugins()
 
     s_status = PluginManagerStatus::ePluginsLoaded;
 
-    // Kickoff OTA update, this function internally will check OTA preferences
+#if defined(SL_PRODUCTION)
+    // On production builds kickoff OTA update, this function internally will
+    // check OTA preferences
     m_ota->readServerManifest();
     bool requestOptionalUpdates = (m_pref.flags & PreferenceFlags::eAllowOTA);
     for (Feature f : m_featuresToLoad)
     {
         m_ota->checkForOTA(f, m_api, requestOptionalUpdates);
     }
+#endif
 
     //! Now let's enumerate SL plugins!
     //!
@@ -876,6 +909,8 @@ Result PluginManager::loadPlugins()
         }
     }
 
+#if defined(SL_PRODUCTION)
+    // Only load plugins from OTA on production builds.
     if (m_pref.flags & PreferenceFlags::eLoadDownloadedPlugins)
     {
         SL_LOG_INFO("Searching for OTA'd plugins...");
@@ -902,6 +937,9 @@ Result PluginManager::loadPlugins()
     {
         SL_LOG_INFO("eLoadDownloadedPlugins flag not passed to preferences, OTA'd plugins will not be loaded!");
     }
+#else
+    SL_LOG_INFO("SL_PRODUCTION not defined at build-time, OTA'd plugins will not be loaded!");
+#endif
 
     if (pluginList.empty())
     {
@@ -1059,6 +1097,7 @@ Result PluginManager::unloadPlugins()
     m_plugins.clear();
     m_featurePluginsMap.clear();
     m_featureExternalConfigMap.clear();
+    m_featureSupportedMap.clear();
     for (auto& hooks : m_afterHooks)
     {
         hooks.clear();
@@ -1411,7 +1450,6 @@ uint32_t PluginManager::getFunctionHookID(const std::string& name)
 {
     return (uint32_t)m_functionHookIDMap.find(name)->second;
 }
-
 
 }
 }

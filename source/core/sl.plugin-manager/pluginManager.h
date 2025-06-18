@@ -31,7 +31,6 @@
 #include "external/json/include/nlohmann/json.hpp"
 using json = nlohmann::json;
 
-
 struct ID3D12Device;
 struct ID3D11Device;
 
@@ -82,8 +81,6 @@ struct FeatureContext
 
 struct IPluginManager
 {
-
-
     virtual Result loadPlugins() = 0;
     virtual Result unloadPlugins() = 0;
 
@@ -117,6 +114,7 @@ struct IPluginManager
     virtual const FeatureContext* getFeatureContext(Feature feature) = 0;
 
     virtual bool getExternalFeatureConfig(Feature feature, std::string& configAsText) = 0;
+    virtual Result getFeatureSupportedExternalConfig(Feature feature) = 0;
     virtual bool getLoadedFeatureConfigs(std::vector<json>& configList) const = 0;
     virtual bool getLoadedFeatures(std::vector<Feature>& featureList) const = 0;
 };

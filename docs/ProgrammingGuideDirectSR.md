@@ -1,3 +1,5 @@
+
+
 Streamline - DirectSR
 =======================
 
@@ -12,7 +14,7 @@ application.
 > - Records into existing command-lists, giving applications finer work-scheduling power.
 > - Support for full RGBA scaling with `sl::DLSSOptions::alphaUpscalingEnabled`.
 
-Version 2.7.32
+Version 2.8.0
 =======
 
 ### 1.0 CHECK IF DIRECTSR IS SUPPORTED
@@ -24,7 +26,6 @@ sl::AdapterInfo adapterInfo;
 
 adapterInfo.deviceLUID = (uint8_t*)&desc.AdapterLuid;
 adapterInfo.deviceLUIDSizeInBytes = sizeof(LUID);
-
 result = slIsFeatureSupported(sl::kFeatureDirectSR, slAdapterInfo);
 ```
 
@@ -43,19 +44,23 @@ DirectSR can make use of the following buffer types.
 To tag a resource do the following:
 
 ```cpp
-colorIn = {sl::ResourceType::eTex2d, myTAAUInput, nullptr, nullptr, (uint32_t) myTAAUResourceState };
 
-// IMPORTANT: Make sure to mark resources which can be deleted or reused for other purposes within a frame as volatile
-sl::ResourceTag colorInTag = sl::ResourceTag {&colorIn, sl::kBufferTypeScalingInputColor, sl::ResourceLifecycle::eOnlyValidNow};
+colorIn = {sl::ResourceType::eTex2d, myTAAUInput, nullptr, nullptr, (uint32_t)myTAAUResourceState};
 
-slSetTag(viewport, &colorInTag, 1, cmdList);
+// IMPORTANT: Make sure to mark resources which can be deleted or reused for other purposes within a frame as
+// volatile
+sl::ResourceTag colorInTag =
+    sl::ResourceTag{&colorIn, sl::kBufferTypeScalingInputColor, sl::ResourceLifecycle::eOnlyValidNow};
 
-// You can also provide multiple tags to a single slSetTag() call.
-sl::ResourceTag colorInTag = sl::ResourceTag {&colorIn, sl::kBufferTypeScalingInputColor, sl::ResourceLifecycle::eOnlyValidNow};
-sl::ResourceTag colorOutTag = sl::ResourceTag {&colorOut, sl::kBufferTypeScalingOutputColor, sl::ResourceLifecycle::eOnlyValidNow};
+slSetTagForFrame(*currentFrame, viewport, &colorInTag, 1, cmdList);
+// You can also provide multiple tags to a single slSetTagForFrame() call.
+sl::ResourceTag colorInTag =
+    sl::ResourceTag{&colorIn, sl::kBufferTypeScalingInputColor, sl::ResourceLifecycle::eOnlyValidNow};
+sl::ResourceTag colorOutTag =
+    sl::ResourceTag{&colorOut, sl::kBufferTypeScalingOutputColor, sl::ResourceLifecycle::eOnlyValidNow};
 
 sl::ResourceTag inputs[] = {colorInTag, colorOutTag};
-slSetTag(viewport, inputs, _countof(inputs), cmdList);
+slSetTagForFrame(*currentFrame, viewport, inputs, _countof(inputs), cmdList);
 ```
 
 > **NOTE:**
@@ -64,8 +69,11 @@ slSetTag(viewport, inputs, _countof(inputs), cmdList);
 ```cpp
 // Extents are in {top, left, width, height} order.
 // Define a rectangle of size (1920, 1080) at offset (0, 0)
-sl::Extent inputExtent {0, 0, 1920, 1080};
-sl::ResourceTag colorInTag = sl::ResourceTag {&colorIn, sl::kBufferTypeScalingInputColor, sl::ResourceLifecycle::eOnlyValidNow, &inputExtent};
+sl::Extent inputExtent{0, 0, 1920, 1080};
+sl::ResourceTag colorInTag = sl::ResourceTag{&colorIn,
+                                             sl::kBufferTypeScalingInputColor,
+                                             sl::ResourceLifecycle::eOnlyValidNow,
+                                             &inputExtent};
 ```
 
 ### 3.0 QUERYING DIRECTSR VARIANTS
@@ -105,7 +113,7 @@ if(SL_FAILED(result, slSetConstants(consts, *frameToken, myViewport))) // consta
     // Handle error, check logs
 }
 ```
-For more details please see [common constants](ProgrammingGuide.md#2101-common-constants)
+For more details please see [common constants](ProgrammingGuide.md#2111-common-constants)
 
 ### 5.0 ADD DIRECTSR TO THE RENDERING PIPELINE
 

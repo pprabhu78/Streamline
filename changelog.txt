@@ -1,3 +1,46 @@
+======== Release 2.8.0 Entries ========
+
+    * Deprecated support for the following `sl::DLSSPreset` values:
+      - `sl::DLSSPreset::ePresetA`
+      - `sl::DLSSPreset::ePresetB`
+      - `sl::DLSSPreset::ePresetC`
+      - `sl::DLSSPreset::ePresetD`
+      - `sl::DLSSPreset::ePresetE`
+
+    * Deprecated support for building with Visual Studio 2017.
+
+    * Fixed a bug in `sl.dlss_g` which allowed applications to pass in an
+      invalid `sl::DLSSGOptions::numFramesToGenerate` value of zero, resulting
+      in the presentation of stale frame data when DLSS-FG was enabled.
+
+    * Fixed a bug in `sl.common` which could lead to graphical corruption and
+      instability in when used across different threads.
+
+    * Disabled loading of plugins via OTA Updates on non-production builds.
+
+    * Improved performance of the following functions:
+      - `slAllocateResources()`
+      - `slEvaluateFeature()`
+      - `slFreeResources()`
+      - `slGetFeatureFunction()`
+      - `slIsFeatureLoaded()`
+      - `slSetConstants()`
+      - `slSetTag()`
+      - `slSetTagForFrame()`
+
+    * Added debug event markers for the following APIs:
+      - `slEvaluateFeature()`
+      - `slSetTag()`
+      - `slSetTagForFrame()`
+
+    * Enabled debug names in all build configurations.
+
+    * Updated the FrameView SDK installer bundled with Streamline.
+
+    * Added documentation for frame pacing behavior. See section 14.1
+      "UNDERSTANDING FRAME PACING BEHAVIOR" in `ProgrammingGuideDLSS_G.md` for
+      more information.
+
 ======== Release 2.7.32 Entries ========
 
     * Removed the following directories from the repository. Release packages

@@ -547,25 +547,6 @@ public:
         return completedValue >= m_fenceValue[m_index];
     }
 
-    WaitStatus waitCPUFence(Fence fence, uint64_t syncValue)
-    {
-        auto semaphore = (VkSemaphore)fence;
-        uint64_t completedValue;
-        VK_CHECK_RWS(m_ddt.GetSemaphoreCounterValue(m_device, semaphore, &completedValue));
-        if (completedValue < syncValue)
-        {
-            VkSemaphoreWaitInfo waitInfo;
-            waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-            waitInfo.pNext = NULL;
-            waitInfo.flags = 0;
-            waitInfo.semaphoreCount = 1;
-            waitInfo.pSemaphores = &semaphore;
-            waitInfo.pValues = &syncValue;
-            VK_CHECK_RWS(m_ddt.WaitSemaphores(m_device, &waitInfo, kMaxSemaphoreWaitUs));
-        }
-        return WaitStatus::eNoTimeout;
-    }
-
     void syncGPU(const GPUSyncInfo* info)
     {
         std::vector<chi::Fence> waitSemaphores;
@@ -1439,7 +1420,10 @@ ComputeStatus Vulkan::destroyKernel(Kernel& kernel)
     return ComputeStatus::eOk;
 }
 
-ComputeStatus Vulkan::createCommandListContext(CommandQueue queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])
+ComputeStatus Vulkan::createCommandListContext(ChiCommandQueue* queue,
+                                               uint32_t count,
+                                               ICommandListContext*& ctx,
+                                               const char friendlyName[])
 { 
     auto tmp = new CommandListContextVK();
     tmp->init(this, m_vk, friendlyName, m_device, (CommandQueueVk*)queue, count);
@@ -1466,7 +1450,29 @@ uint64_t Vulkan::getCompletedValue(Fence fence)
     return completedValue;
 }
 
-ComputeStatus Vulkan::createCommandQueue(CommandQueueType type, CommandQueue& queue, const char friendlyName[], uint32_t index)
+WaitStatus Vulkan::waitCPUFence(Fence fence, uint64_t syncValue)
+{
+    auto semaphore = (VkSemaphore)fence;
+    uint64_t completedValue;
+    VK_CHECK_RWS(m_ddt.GetSemaphoreCounterValue(m_device, semaphore, &completedValue));
+    if (completedValue < syncValue)
+    {
+        VkSemaphoreWaitInfo waitInfo;
+        waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        waitInfo.pNext = NULL;
+        waitInfo.flags = 0;
+        waitInfo.semaphoreCount = 1;
+        waitInfo.pSemaphores = &semaphore;
+        waitInfo.pValues = &syncValue;
+        VK_CHECK_RWS(m_ddt.WaitSemaphores(m_device, &waitInfo, kMaxSemaphoreWaitUs));
+    }
+    return WaitStatus::eNoTimeout;
+}
+
+ComputeStatus Vulkan::createCommandQueue(CommandQueueType type,
+                                         ChiCommandQueue*& queue,
+                                         const char friendlyName[],
+                                         uint32_t index)
 {
     queue = {};
     uint32_t queueFamily{}, queueIndex{}, queueCreateFlags{};
@@ -1496,12 +1502,12 @@ ComputeStatus Vulkan::createCommandQueue(CommandQueueType type, CommandQueue& qu
 
     VkQueue tmp{};
     CHI_CHECK(getDeviceQueue(queueFamily, queueIndex + index, queueCreateFlags, tmp));
-    queue = new chi::CommandQueueVk{ tmp, type, queueFamily, queueIndex + index };
+    queue = (ChiCommandQueue *)(new chi::CommandQueueVk{ tmp, type, queueFamily, queueIndex + index });
 
     return ComputeStatus::eOk;
 }
 
-ComputeStatus Vulkan::destroyCommandQueue(CommandQueue& queue)
+ComputeStatus Vulkan::destroyCommandQueue(ChiCommandQueue* queue)
 { 
     auto tmp = (chi::CommandQueueVk*)queue;
     delete tmp;
@@ -3020,7 +3026,6 @@ std::wstring Vulkan::getDebugName(Resource res)
     return L"Unknown";
 }
 
-#ifdef SL_DEBUG
 #define SET_VK_DEBUG_NAME(type, vk_object_type) \
     ComputeStatus Vulkan::setDebugNameVk(type vkStruct, const char* name) \
     { \
@@ -3039,13 +3044,6 @@ std::wstring Vulkan::getDebugName(Resource res)
         m_ddt.SetDebugUtilsObjectNameEXT(m_device, &info); \
         return ComputeStatus::eOk; \
     }
-#else
-#define SET_VK_DEBUG_NAME(type, vk_object_type) \
-    ComputeStatus Vulkan::setDebugNameVk(type , const char* ) \
-    { \
-        return ComputeStatus::eOk; \
-    }
-#endif
 
 SET_VK_DEBUG_NAME(VkDescriptorSet, VK_OBJECT_TYPE_DESCRIPTOR_SET)
 SET_VK_DEBUG_NAME(VkDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT)
@@ -3062,7 +3060,6 @@ SET_VK_DEBUG_NAME(VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW)
 
 ComputeStatus Vulkan::setDebugName(Resource InOutResource, const char InFriendlyName[])
 {
-#ifdef SL_DEBUG
     sl::Resource* vkResource = (sl::Resource*) InOutResource;
 
     // The VK_EXT_debug_utils may not have been enabled so don't try to set names by default
@@ -3178,7 +3175,6 @@ ComputeStatus Vulkan::setDebugName(Resource InOutResource, const char InFriendly
         };
         m_ddt.SetDebugUtilsObjectNameEXT(m_device, &ObjectNameInfo);
     }
-#endif
     return ComputeStatus::eOk;
 }
 
@@ -3372,6 +3368,7 @@ ComputeStatus Vulkan::getNativeFormat(Format format, NativeFormat& native)
     {
         case eFormatRGB10A2UN:  native = VK_FORMAT_A2B10G10R10_UNORM_PACK32; break;
         case eFormatRGBA8UN:    native = VK_FORMAT_R8G8B8A8_UNORM; break;
+        case eFormatRGBA8SN:    native = VK_FORMAT_R8G8B8A8_SNORM; break;
         case eFormatBGRA8UN:    native = VK_FORMAT_B8G8R8A8_UNORM; break;
         case eFormatR8UN:       native = VK_FORMAT_R8_UNORM; break;
         case eFormatRGBA32F:    native = VK_FORMAT_R32G32B32A32_SFLOAT; break;
@@ -3413,6 +3410,7 @@ ComputeStatus Vulkan::getNativeFormat(Format format, NativeFormat& native)
         case VK_FORMAT_B8G8R8A8_SRGB:               format = eFormatSBGRA8UN; break;
         case VK_FORMAT_B8G8R8A8_UNORM:              format = eFormatBGRA8UN; break;
         case VK_FORMAT_R8G8B8A8_UNORM:              format = eFormatRGBA8UN; break;
+        case VK_FORMAT_R8G8B8A8_SNORM:              format = eFormatRGBA8SN; break;
         case VK_FORMAT_R32G32B32A32_SFLOAT:         format = eFormatRGBA32F; break;
         case VK_FORMAT_R32G32B32_SFLOAT:            format = eFormatRGB32F; break;
         case VK_FORMAT_R16G16B16A16_SFLOAT:         format = eFormatRGBA16F; break;
@@ -3471,7 +3469,7 @@ ComputeStatus Vulkan::getNativeFormat(Format format, NativeFormat& native)
      return m_reflex->setMarker(marker, frameId);
  }
 
- ComputeStatus Vulkan::notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type)
+ ComputeStatus Vulkan::notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type)
  {
      CHECK_REFLEX();
      return m_reflex->notifyOutOfBandCommandQueue(queue, type);

@@ -121,7 +121,7 @@ struct IMGUIContext
 
     bool                      renderInternal         = true;   // true = render in this plugin, false = render in dlss_g
     chi::ICommandListContext* cmdList                = nullptr;
-    chi::CommandQueue         cmdQueue               = nullptr;
+    chi::ChiCommandQueue*    cmdQueue               = nullptr;
     ID3D12Resource*           currentBackBuffer      = nullptr;
     VkImage                   currentBackBufferVk    = nullptr;
     uint32_t                  currentBackBufferIndex = 0;
@@ -3906,7 +3906,7 @@ void slOnPluginShutdown()
         imgui::destroyContext(nullptr);
         if (ctx.platform == RenderAPI::eVulkan)
         {
-            delete ctx.cmdQueue;
+            ctx.compute->destroyCommandQueue(ctx.cmdQueue);
         }
         ctx.cmdQueue = nullptr;
         ctx.vkSwapchainInfoMap.clear();
@@ -4003,7 +4003,7 @@ void renderInternal()
 HRESULT slHookCreateSwapChainForCoreWindow(IDXGIFactory2* pFactory, IUnknown* pDevice, IUnknown* pWindow, const DXGI_SWAP_CHAIN_DESC1* pDesc, IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {
     auto& ctx = (*sl::imgui::getContext());
-    ctx.cmdQueue = (chi::CommandQueue)pDevice;
+    ctx.cmdQueue = (chi::ChiCommandQueue *)pDevice;
     ctx.bufferCount = pDesc->BufferCount;
     ctx.compute->createCommandListContext(ctx.cmdQueue, ctx.bufferCount, ctx.cmdList, "imgui-cmdlist");
     ctx.frameMeter.reset();
@@ -4013,7 +4013,7 @@ HRESULT slHookCreateSwapChainForCoreWindow(IDXGIFactory2* pFactory, IUnknown* pD
 HRESULT slHookCreateSwapChainForHwnd(IDXGIFactory2* pFactory, IUnknown* pDevice, HWND hWnd, const DXGI_SWAP_CHAIN_DESC1* pDesc, const DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pFullscreenDesc, IDXGIOutput* pRestrictToOutput, IDXGISwapChain1** ppSwapChain)
 {    
     auto& ctx = (*sl::imgui::getContext());
-    ctx.cmdQueue = (chi::CommandQueue)pDevice;    
+    ctx.cmdQueue = (chi::ChiCommandQueue *)pDevice;
     ctx.bufferCount = pDesc->BufferCount;    
     ctx.compute->createCommandListContext(ctx.cmdQueue, ctx.bufferCount, ctx.cmdList, "imgui-cmdlist");    
     ctx.frameMeter.reset();    
@@ -4023,7 +4023,7 @@ HRESULT slHookCreateSwapChainForHwnd(IDXGIFactory2* pFactory, IUnknown* pDevice,
 HRESULT slHookCreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc, IDXGISwapChain** ppSwapChain)
 {    
     auto& ctx = (*sl::imgui::getContext());
-    ctx.cmdQueue = (chi::CommandQueue)pDevice;
+    ctx.cmdQueue = (chi::ChiCommandQueue *)pDevice;
     ctx.bufferCount = pDesc->BufferCount;
     ctx.compute->createCommandListContext(ctx.cmdQueue, ctx.bufferCount, ctx.cmdList, "imgui-cmdlist");
     ctx.frameMeter.reset();
@@ -4248,7 +4248,7 @@ VkResult slHookVkPresent(VkQueue Queue, const VkPresentInfoKHR* PresentInfo, boo
             assert((qInfo.flags & VK_QUEUE_GRAPHICS_BIT) != 0);
             if (ctx.cmdQueue == nullptr)
             {
-                ctx.cmdQueue = new chi::CommandQueueVk(Queue, chi::CommandQueueType::eGraphics, qInfo.familyIndex, qInfo.index);
+                ctx.cmdQueue = (chi::ChiCommandQueue *)new chi::CommandQueueVk(Queue, chi::CommandQueueType::eGraphics, qInfo.familyIndex, qInfo.index);
             }
             else
             {

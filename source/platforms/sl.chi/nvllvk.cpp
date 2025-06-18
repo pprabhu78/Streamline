@@ -175,7 +175,7 @@ public:
         return ComputeStatus::eOk;
     }
 
-    virtual ComputeStatus notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type) override
+    virtual ComputeStatus notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type) override
     {
         LL_CHECK(NvLL_VK_NotifyOutOfBandQueue(m_device, (VkQueue)((CommandQueueVk*)queue)->native, (NVLL_VK_OUT_OF_BAND_QUEUE_TYPE)type));
         return ComputeStatus::eOk;

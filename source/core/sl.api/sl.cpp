@@ -177,26 +177,16 @@ inline sl::Result slValidateState()
     return sl::Result::eOk;
 }
 
-
 inline sl::Result slValidateFeatureContext(sl::Feature f, const sl::plugin_manager::FeatureContext*& ctx)
 {
     ctx = plugin_manager::getInterface()->getFeatureContext(f);
-    std::string jsonConfig{};
-    if (!ctx || !plugin_manager::getInterface()->getExternalFeatureConfig(f, jsonConfig))
+    if (!ctx)
     {
-        SL_LOG_ERROR("'%s' is missing.", getFeatureAsStr(f));
+        SL_LOG_ERROR("'%s' context is missing.", getFeatureAsStr(f));
         return Result::eErrorFeatureMissing;
     }
-    // Any JSON parser can be used here
-    std::istringstream stream(jsonConfig);
-    nlohmann::json extCfg;
-    stream >> extCfg;
-    if (extCfg.contains("/feature/supported"_json_pointer) && !extCfg["feature"]["supported"])
-    {
-        SL_LOG_ERROR("'%s' is not supported.", getFeatureAsStr(f));
-        return Result::eErrorFeatureNotSupported;
-    }
-    return Result::eOk;
+    sl::Result featureSupported = plugin_manager::getInterface()->getFeatureSupportedExternalConfig(f);
+    return featureSupported;
 }
 
 struct APIContext

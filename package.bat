@@ -6,6 +6,7 @@
 ::      -develop              Package using Develop binaries
 ::      -production           Package using Production binaries (also includes Develop binaries in the development/ folder)
 ::      -source               Include source in the final package
+::      -sourceonly           Package only sources (no binaries)
 ::      -dir [output_path]    Creates the package in output_path. Defaults to .\_sdk
 
 @SETLOCAL EnableDelayedExpansion
@@ -15,8 +16,10 @@
 set cfg=UNKNOWN
 set cfg_alt=None
 set src=%~dp0
+set artifacts_src=%src%\_artifacts
 set dest=%~dp0\_sdk
 set include_source=False
+set include_binaries=True
 :: When packaging with source, the features dir is redundant with bin, but better reflects the original repo
 set create_features_dir=False
 
@@ -46,12 +49,21 @@ IF NOT "%1"=="" (
     IF "%1"=="-source" (
         set include_source=True
     )
+    if "%1"=="-sourceonly" (
+        set include_source=True
+        set include_binaries=False
+    )
     IF "%1"=="-dir" (
         set dest=%~f2
         shift
     )
     IF "%1"=="-root" (
         set src=%~f2
+        set artifacts_src=%~f2\_artifacts
+        shift
+    )
+    IF "%1"=="-artifacts-src" (
+        set artifacts_src=%~f2
         shift
     )
     shift
@@ -63,7 +75,6 @@ IF "%cfg%"=="UNKNOWN" (
     echo "Use one of -debug, -develop, or -production"
     exit /b 1
 )
-
 
 IF EXIST %dest%\ rmdir %dest% /S /Q
 mkdir %dest%
@@ -86,18 +97,18 @@ IF EXIST %src%/features (
 )
 
 :: Common Plugins
-copy %src%\_artifacts\sl.common\%copy_cfg%_x64\sl.common.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.common\%copy_cfg%_x64\sl.common.pdb %sym_dest% /Y
-copy %src%\_artifacts\sl.interposer\%copy_cfg%_x64\sl.interposer.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.interposer\%copy_cfg%_x64\sl.interposer.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.common\%copy_cfg%_x64\sl.common.dll %copy_dest% /Y
+copy %artifacts_src%\sl.common\%copy_cfg%_x64\sl.common.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.interposer\%copy_cfg%_x64\sl.interposer.dll %copy_dest% /Y
+copy %artifacts_src%\sl.interposer\%copy_cfg%_x64\sl.interposer.pdb %sym_dest% /Y
 IF NOT "%copy_cfg%"=="Production" (
-    copy %src%\_artifacts\sl.imgui\%copy_cfg%_x64\sl.imgui.dll %copy_dest% /Y
-    copy %src%\_artifacts\sl.imgui\%copy_cfg%_x64\sl.imgui.pdb %sym_dest% /Y
+    copy %artifacts_src%\sl.imgui\%copy_cfg%_x64\sl.imgui.dll %copy_dest% /Y
+    copy %artifacts_src%\sl.imgui\%copy_cfg%_x64\sl.imgui.pdb %sym_dest% /Y
 )
 
 :: DLSS Super Resolution
-copy %src%\_artifacts\sl.dlss\%copy_cfg%_x64\sl.dlss.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.dlss\%copy_cfg%_x64\sl.dlss.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.dlss\%copy_cfg%_x64\sl.dlss.dll %copy_dest% /Y
+copy %artifacts_src%\sl.dlss\%copy_cfg%_x64\sl.dlss.pdb %sym_dest% /Y
 
 copy %features_src%\nvngx_dlss.license.txt %copy_dest% /Y
 
@@ -110,10 +121,10 @@ IF "%copy_cfg%"=="Production" (
 :: DLSS Frame Generation
 IF "%copy_cfg%"=="Production" (
     copy %features_src%\sl.dlss_g.dll %copy_dest% /Y
-    copy %src%\_artifacts\sl.dlss_g\%copy_cfg%_x64\sl.dlss_g.dll %copy_dest% /Y
+    copy %artifacts_src%\sl.dlss_g\%copy_cfg%_x64\sl.dlss_g.dll %copy_dest% /Y
 ) ELSE (
     copy %features_src%\development\sl.dlss_g.dll %copy_dest% /Y
-    copy %src%\_artifacts\sl.dlss_g\Develop_x64\sl.dlss_g.dll %copy_dest% /Y
+    copy %artifacts_src%\sl.dlss_g\Develop_x64\sl.dlss_g.dll %copy_dest% /Y
 )
 
 IF "%copy_cfg%"=="Production" (
@@ -123,8 +134,8 @@ IF "%copy_cfg%"=="Production" (
 )
 
 :: DLSS Ray Reconstruction
-copy %src%\_artifacts\sl.dlss_d\%copy_cfg%_x64\sl.dlss_d.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.dlss_d\%copy_cfg%_x64\sl.dlss_d.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.dlss_d\%copy_cfg%_x64\sl.dlss_d.dll %copy_dest% /Y
+copy %artifacts_src%\sl.dlss_d\%copy_cfg%_x64\sl.dlss_d.pdb %sym_dest% /Y
 
 IF "%copy_cfg%"=="Production" (
     copy %features_src%\nvngx_dlssd.dll %copy_dest% /Y
@@ -133,8 +144,8 @@ IF "%copy_cfg%"=="Production" (
 )
 
 :: DeepDVC
-copy %src%\_artifacts\sl.deepdvc\%copy_cfg%_x64\sl.deepdvc.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.deepdvc\%copy_cfg%_x64\sl.deepdvc.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.deepdvc\%copy_cfg%_x64\sl.deepdvc.dll %copy_dest% /Y
+copy %artifacts_src%\sl.deepdvc\%copy_cfg%_x64\sl.deepdvc.pdb %sym_dest% /Y
 
 IF "%copy_cfg%"=="Production" (
     copy %features_src%\nvngx_deepdvc.dll %copy_dest% /Y
@@ -145,26 +156,26 @@ IF "%copy_cfg%"=="Production" (
 
 
 :: NIS
-copy %src%\_artifacts\sl.nis\%copy_cfg%_x64\sl.nis.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.nis\%copy_cfg%_x64\sl.nis.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.nis\%copy_cfg%_x64\sl.nis.dll %copy_dest% /Y
+copy %artifacts_src%\sl.nis\%copy_cfg%_x64\sl.nis.pdb %sym_dest% /Y
 
 copy %features_src%\nis.license.txt %copy_dest% /Y
 
 :: NvPerf
-copy %src%\_artifacts\sl.nvperf\%copy_cfg%_x64\sl.nvperf.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.nvperf\%copy_cfg%_x64\sl.nvperf.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.nvperf\%copy_cfg%_x64\sl.nvperf.dll %copy_dest% /Y
+copy %artifacts_src%\sl.nvperf\%copy_cfg%_x64\sl.nvperf.pdb %sym_dest% /Y
 
 :: PCL
-copy %src%\_artifacts\sl.pcl\%copy_cfg%_x64\sl.pcl.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.pcl\%copy_cfg%_x64\sl.pcl.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.pcl\%copy_cfg%_x64\sl.pcl.dll %copy_dest% /Y
+copy %artifacts_src%\sl.pcl\%copy_cfg%_x64\sl.pcl.pdb %sym_dest% /Y
 
 :: DirectSR
-copy %src%\_artifacts\sl.directsr\%copy_cfg%_x64\sl.directsr.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.directsr\%copy_cfg%_x64\sl.directsr.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.directsr\%copy_cfg%_x64\sl.directsr.dll %copy_dest% /Y
+copy %artifacts_src%\sl.directsr\%copy_cfg%_x64\sl.directsr.pdb %sym_dest% /Y
 
 :: Reflex
-copy %src%\_artifacts\sl.reflex\%copy_cfg%_x64\sl.reflex.dll %copy_dest% /Y
-copy %src%\_artifacts\sl.reflex\%copy_cfg%_x64\sl.reflex.pdb %sym_dest% /Y
+copy %artifacts_src%\sl.reflex\%copy_cfg%_x64\sl.reflex.dll %copy_dest% /Y
+copy %artifacts_src%\sl.reflex\%copy_cfg%_x64\sl.reflex.pdb %sym_dest% /Y
 
 copy %features_src%\reflex.license.txt %copy_dest% /Y
 
@@ -178,22 +189,24 @@ IF "%copy_cfg%"=="Develop" (
 exit /b 0
 :endcopybin
 
-mkdir %dest%\lib\x64
-mkdir %dest%\bin\x64
-mkdir %dest%\symbols
 
+IF "%include_binaries%"=="True" (
+    mkdir %dest%\lib\x64
+    mkdir %dest%\bin\x64
+    mkdir %dest%\symbols
 
-IF "%cfg_alt%"=="None" (
-    call:copybin %cfg% %dest%\bin\x64 %dest%\symbols
-) ELSE (
-    mkdir %dest%\bin\x64\development
+    IF "%cfg_alt%"=="None" (
+        call:copybin %cfg% %dest%\bin\x64 %dest%\symbols
+    ) ELSE (
+        mkdir %dest%\bin\x64\development
 
-    call:copybin %cfg% %dest%\bin\x64 NUL
-    call:copybin %cfg_alt% %dest%\bin\x64\development %dest%\symbols
+        call:copybin %cfg% %dest%\bin\x64 NUL
+        call:copybin %cfg_alt% %dest%\bin\x64\development %dest%\symbols
+    )
+
+    :: Interposer lib
+    copy %artifacts_src%\sl.interposer\%cfg%_x64\sl.interposer.lib %dest%\lib\x64\ /Y
 )
-
-:: Interposer lib
-copy %src%\_artifacts\sl.interposer\%cfg%_x64\sl.interposer.lib %dest%\lib\x64\ /Y
 
 :: INCLUDES
 mkdir %dest%\include
@@ -213,6 +226,7 @@ copy %src%\include\sl_security.h        %dest%\include
 copy %src%\include\sl_struct.h          %dest%\include
 copy %src%\include\sl_version.h         %dest%\include
 
+
 copy %src%\include\sl_deepdvc.h         %dest%\include
 copy %src%\include\sl_dlss.h            %dest%\include
 copy %src%\include\sl_dlss_d.h          %dest%\include
@@ -223,7 +237,6 @@ copy %src%\include\sl_pcl.h             %dest%\include
 copy %src%\include\sl_directsr.h             %dest%\include
 copy %src%\include\sl_reflex.h          %dest%\include
 copy %src%\include\sl_template.h        %dest%\include
-
 
 
 :: SCRIPTS
@@ -242,10 +255,12 @@ copy %src%\scripts\sl.cmake %dest%\CMakeLists.txt
 
 
 :: UTILITIES
-mkdir %dest%\utils
-mkdir %dest%\utils\reflex
+IF "%include_binaries%"=="True" (
+    mkdir %dest%\utils
+    mkdir %dest%\utils\reflex
 
-xcopy %src%\utils\reflex %dest%\utils\reflex /S
+    xcopy %src%\utils\reflex %dest%\utils\reflex /S
+)
 
 :: DOCUMENTATION
 mkdir %dest%\docs
@@ -253,6 +268,7 @@ mkdir %dest%\docs\media
 
 copy %src%\docs\ProgrammingGuide.md              %dest%\docs
 copy %src%\docs\ProgrammingGuideDeepDVC.md       %dest%\docs
+copy %src%\docs\ProgrammingGuideDirectSR.md      %dest%\docs
 copy %src%\docs\ProgrammingGuideDLSS.md          %dest%\docs
 copy %src%\docs\ProgrammingGuideDLSS_G.md        %dest%\docs
 copy %src%\docs\media\dlssg*.png %dest%\docs\media
@@ -320,7 +336,8 @@ IF "%include_source%"=="True" (
 
     :: Common Source
     xcopy %src%\source\core      %dest%\source\core /S
-    xcopy %src%\source\platforms %dest%\source\platforms /S
+    mkdir %dest%\source\platforms\sl.chi
+    xcopy %src%\source\platforms\sl.chi %dest%\source\platforms\sl.chi /S
     xcopy %src%\source\shared    %dest%\source\shared /S
 
     :: Plugins
@@ -389,12 +406,12 @@ IF "%include_source%"=="True" (
     copy %src%\shaders\vulkan_clear_image_view_spirv.h %dest%\shaders
 
     :: Compiled Shaders
-    copy %src%\_artifacts\shaders\copy_cs.h            %dest%\_artifacts\shaders
-    copy %src%\_artifacts\shaders\copy_spv.h           %dest%\_artifacts\shaders
-    copy %src%\_artifacts\shaders\copy_to_buffer_cs.h  %dest%\_artifacts\shaders
-    copy %src%\_artifacts\shaders\copy_to_buffer_spv.h %dest%\_artifacts\shaders
-    copy %src%\_artifacts\shaders\mvec_cs.h            %dest%\_artifacts\shaders
-    copy %src%\_artifacts\shaders\mvec_spv.h           %dest%\_artifacts\shaders
+    copy %artifacts_src%\shaders\copy_cs.h            %dest%\_artifacts\shaders
+    copy %artifacts_src%\shaders\copy_spv.h           %dest%\_artifacts\shaders
+    copy %artifacts_src%\shaders\copy_to_buffer_cs.h  %dest%\_artifacts\shaders
+    copy %artifacts_src%\shaders\copy_to_buffer_spv.h %dest%\_artifacts\shaders
+    copy %artifacts_src%\shaders\mvec_cs.h            %dest%\_artifacts\shaders
+    copy %artifacts_src%\shaders\mvec_spv.h           %dest%\_artifacts\shaders
 
     :: Feature DLLs
     IF "%create_features_dir%"=="True" (
@@ -420,10 +437,12 @@ IF "%include_source%"=="True" (
     )
 
     :: DLSS-G Plugin
-    mkdir %dest%\_artifacts\sl.dlss_g
-    mkdir %dest%\_artifacts\sl.dlss_g\Production_x64
-    mkdir %dest%\_artifacts\sl.dlss_g\Develop_x64
-    copy %src%\_artifacts\sl.dlss_g\Production_x64\sl.dlss_g.dll %dest%\_artifacts\sl.dlss_g\Production_x64
-    copy %src%\_artifacts\sl.dlss_g\Develop_x64\sl.dlss_g.dll %dest%\_artifacts\sl.dlss_g\Develop_x64
+    IF "%include_binaries%"=="True" (
+        mkdir %dest%\_artifacts\sl.dlss_g
+        mkdir %dest%\_artifacts\sl.dlss_g\Production_x64
+        mkdir %dest%\_artifacts\sl.dlss_g\Develop_x64
+        copy %artifacts_src%\sl.dlss_g\Production_x64\sl.dlss_g.dll %dest%\_artifacts\sl.dlss_g\Production_x64
+        copy %artifacts_src%\sl.dlss_g\Develop_x64\sl.dlss_g.dll %dest%\_artifacts\sl.dlss_g\Develop_x64
+    )
 
 )

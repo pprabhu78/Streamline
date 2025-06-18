@@ -173,6 +173,7 @@ struct LatencyContext
     float4x4 prevViewToClipMatrix{};
     bool predictCamera = false;
 
+
     //! Can be overridden via sl.reflex.json config
     uint32_t frameLimitUs = UINT_MAX;
     bool useMarkersToOptimizeOverride = false;
@@ -247,7 +248,7 @@ void updateEmbeddedJSON(json& config)
         // We start with Pascal+ then later check again if GetSleepStatus returns error or not
         for (uint32_t i = 0; i < caps->gpuCount; i++)
         {
-            ctx.lowLatencyAvailable |= caps->adapters[i].architecture >= NV_GPU_ARCHITECTURE_ID::NV_GPU_ARCHITECTURE_GP100;
+            ctx.lowLatencyAvailable |= caps->adapters[i].architecture >= NV_GPU_ARCHITECTURE_ID::NV_GPU_ARCHITECTURE_GM000;
             // Starting since 511.23 flash indicator should be controlled by GFE instead of application
             ctx.flashIndicatorDriverControlled |= (caps->driverVersionMajor * 100 + caps->driverVersionMinor) >= 51123;
         }
@@ -461,6 +462,7 @@ Result slGetData(const BaseStructure* inputs, BaseStructure* outputs, CommandBuf
     return Result::eOk;
 }
 
+
 internal::shared::Status getSharedData(BaseStructure* requestedData, const BaseStructure* requesterInfo)
 {
     if (!requestedData || requestedData->structType != reflex::ReflexInternalSharedData::s_structType)
@@ -479,6 +481,7 @@ internal::shared::Status getSharedData(BaseStructure* requestedData, const BaseS
     // v3
     remote->slReflexSetCameraDataFence = slReflexSetCameraDataFenceInternal;
 
+
     // Let newer requester know that we are older
     if (remote->structVersion > kStructVersion3)
     {
@@ -490,27 +493,28 @@ internal::shared::Status getSharedData(BaseStructure* requestedData, const BaseS
 
 sl::Result predictCameraData(const ReflexCameraData& cameraData, float4x4& prevWorldToView, float4x4& prevViewToClip, ReflexPredictedCameraData& predictedCameraData)
 {
-    // TODO: Should check view matrices are orthonormal for prediction
-    const float4x4& WorldToView = cameraData.worldToViewMatrix;
+    float4x4 ViewToWorld, PrevViewToWorld;
+    matrixOrthoNormalInvert(ViewToWorld, cameraData.worldToViewMatrix);
+    matrixOrthoNormalInvert(PrevViewToWorld, prevWorldToView);
 
     // 1st order prediction (simple constant velocity for now): 
-    const float4& currentTranslation = cameraData.worldToViewMatrix.row[3];
-    float4 prevTranslation = prevWorldToView.getRow(3);
+    const float4& currentTranslation = ViewToWorld.getRow(3);
+    float4 prevTranslation = PrevViewToWorld.getRow(3);
     float4 predictedTranslation = float4(currentTranslation.x, currentTranslation.y, currentTranslation.z, 1);
     predictedTranslation.x += currentTranslation.x - prevTranslation.x;
     predictedTranslation.y += currentTranslation.y - prevTranslation.y;
     predictedTranslation.z += currentTranslation.z - prevTranslation.z;
 
     float4x4 currentRotation;
-    currentRotation[0].x = WorldToView[0].x; currentRotation[0].y = WorldToView[0].y; currentRotation[0].z = WorldToView[0].z; currentRotation[0].w = 0.f;
-    currentRotation[1].x = WorldToView[1].x; currentRotation[1].y = WorldToView[1].y; currentRotation[1].z = WorldToView[1].z; currentRotation[1].w = 0.f;
-    currentRotation[2].x = WorldToView[2].x; currentRotation[2].y = WorldToView[2].y; currentRotation[2].z = WorldToView[2].z; currentRotation[2].w = 0.f;
+    currentRotation[0].x = ViewToWorld[0].x; currentRotation[0].y = ViewToWorld[0].y; currentRotation[0].z = ViewToWorld[0].z; currentRotation[0].w = 0.f;
+    currentRotation[1].x = ViewToWorld[1].x; currentRotation[1].y = ViewToWorld[1].y; currentRotation[1].z = ViewToWorld[1].z; currentRotation[1].w = 0.f;
+    currentRotation[2].x = ViewToWorld[2].x; currentRotation[2].y = ViewToWorld[2].y; currentRotation[2].z = ViewToWorld[2].z; currentRotation[2].w = 0.f;
     currentRotation[3].x = 0.f;              currentRotation[3].y = 0.f;              currentRotation[3].x = 0.f;              currentRotation[3].x = 1.f;
 
     float4x4 inversePrevRotation;
-    inversePrevRotation[0].x = prevWorldToView[0].x; inversePrevRotation[0].y = prevWorldToView[1].x; inversePrevRotation[0].z = prevWorldToView[2].x; inversePrevRotation[0].w = 0.f;
-    inversePrevRotation[1].x = prevWorldToView[0].y; inversePrevRotation[1].y = prevWorldToView[1].y; inversePrevRotation[1].z = prevWorldToView[2].y; inversePrevRotation[1].w = 0.f;
-    inversePrevRotation[2].x = prevWorldToView[0].z; inversePrevRotation[2].y = prevWorldToView[1].z; inversePrevRotation[2].z = prevWorldToView[2].z; inversePrevRotation[2].w = 0.f;
+    inversePrevRotation[0].x = PrevViewToWorld[0].x; inversePrevRotation[0].y = PrevViewToWorld[1].x; inversePrevRotation[0].z = PrevViewToWorld[2].x; inversePrevRotation[0].w = 0.f;
+    inversePrevRotation[1].x = PrevViewToWorld[0].y; inversePrevRotation[1].y = PrevViewToWorld[1].y; inversePrevRotation[1].z = PrevViewToWorld[2].y; inversePrevRotation[1].w = 0.f;
+    inversePrevRotation[2].x = PrevViewToWorld[0].z; inversePrevRotation[2].y = PrevViewToWorld[1].z; inversePrevRotation[2].z = PrevViewToWorld[2].z; inversePrevRotation[2].w = 0.f;
     inversePrevRotation[3].x = 0.f;                  inversePrevRotation[3].y = 0.f;                  inversePrevRotation[3].x = 0.f;                  inversePrevRotation[3].x = 1.f;
 
     float4x4 deltaRotation;
@@ -722,9 +726,10 @@ sl::Result slReflexSetMarker(sl::PCLMarker marker, const sl::FrameToken& frame)
     sl::ReflexHelper inputs(marker);
     inputs.next = (BaseStructure*)&frame;
 
+
     if (marker == sl::PCLMarker::eRenderSubmitStart && ctx.gameWaitCmdList && ctx.gameWaitFence && ctx.gameWaitSyncValue && ctx.compute->getCompletedValue(ctx.gameWaitFence) < ctx.gameWaitSyncValue)
     {
-        ctx.gameWaitCmdList->waitCPUFence(ctx.gameWaitFence, ctx.gameWaitSyncValue);
+        ctx.compute->waitCPUFence(ctx.gameWaitFence, ctx.gameWaitSyncValue);
     }
 
     return slSetData(&inputs, nullptr);

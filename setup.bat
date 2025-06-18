@@ -3,6 +3,7 @@ set cfg=
 :loop
 IF NOT "%1"=="" (
     IF "%1"=="vs2017" (
+        echo WARNING vs2017 is deprecated and will be removed in SL 2.9
         SET cfg=vs2017
     )
     IF "%1"=="vs2019" (

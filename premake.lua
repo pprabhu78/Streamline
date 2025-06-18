@@ -1,6 +1,8 @@
 require("vstudio")
 
-local ROOT = "./"
+local ROOT = path.getabsolute("./") .. "/"
+local TOOLS = path.getabsolute("./tools") .. "/"
+local EXTERNAL = path.getabsolute("./external") .. "/"
 
 nvcfg = {}
 
@@ -24,11 +26,8 @@ nvcfg.SL_DLSS_DN_PUBLIC_SDK = true
 
 
 
-nvcfg.SL_BUILD_DEEPDVC = true
-
-nvcfg.SL_DEEPDVC_PUBLIC_SDK = true
-
 nvcfg.SL_BUILD_LATEWARP = true
+
 
 
 
@@ -55,6 +54,79 @@ newoption {
 	description = "Specify premake toolset"
 }
 
+filter_platforms = "platforms:x64"
+
+newoption {
+	trigger = "with-pack",
+	description = "Output targets to package path",
+	allowed = {
+		{"yes", "yes"},
+		{"no", "no"}
+	},
+	default = "no"
+}
+
+function out_dir()
+	return ROOT .. "_artifacts/"
+end
+
+-- Default:
+-- return ROOT .. "%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}/"
+-- With project:
+-- return ROOT .. project .. "/%{cfg.buildcfg}_%{cfg.platform}/"
+function out_project_dir(project)
+	prefix = out_dir()
+	if _OPTIONS['with-pack'] == "yes" then
+		return prefix .. "%{cfg.buildcfg}/"
+	else
+		-- Make sure always have trailing "/"
+		project = (project or "%{prj.name}") .. "/%{cfg.buildcfg}_%{cfg.platform}/"
+		return prefix .. project
+	end
+end
+
+
+-- Output path for dynamic libraries
+function out_dynamic_lib_dir()
+	local path = out_project_dir()
+	if _OPTIONS['with-pack'] == "yes" then
+		return path .. "bin/%{cfg.platform}/"
+	else
+		return path
+	end
+end
+
+-- Output path for static libraries
+function out_static_lib_dir(project)
+	local path = out_project_dir(project)
+	if _OPTIONS['with-pack'] == "yes" then
+		return path .. "lib/%{cfg.platform}/"
+	else
+		return path
+	end
+end
+
+-- Output path for intermediary object files
+function out_obj_dir()
+	local path = out_project_dir()
+	if _OPTIONS['with-pack'] == "yes" then
+		-- MSVC automatically appends "%{cfg.platform}/${cfg.buildcfg}/", not sure about other toolchains
+		return path .. "obj/"
+	else
+		return path
+	end
+end
+
+-- Output path for symbols (ie Windows pdb)
+function out_symbols_dir()
+	local path = out_project_dir()
+	if _OPTIONS['with-pack'] == "yes" then
+		return path .. "symbols/"
+	else
+		return path
+	end
+end
+
 workspace "streamline"
 
 	-- _ACTION is the argument you passed into premake5 when you ran it.
@@ -63,6 +135,7 @@ workspace "streamline"
 
 	-- Where the project files (vs project, solution, etc) go
 	location( ROOT .. "_project/" .. project_action)
+
 
 	configurations { "Debug", "Develop", "Production" }
 	platforms {
@@ -76,17 +149,15 @@ workspace "streamline"
 	end
 	
 		  
-	local externaldir = (ROOT .."external/")
-
 	includedirs 
 	{ 
 		".", ROOT,
-		externaldir .. "json/include/",
-		externaldir .. "perf-sdk/include",
-		externaldir .. "perf-sdk/include",
-		externaldir .. "perf-sdk/include/windows-desktop-x64",
-		externaldir .. "perf-sdk/NvPerfUtility/include",
-		externaldir .. "vulkan/Include"
+		EXTERNAL .. "json/include/",
+		EXTERNAL .. "perf-sdk/include",
+		EXTERNAL .. "perf-sdk/include",
+		EXTERNAL .. "perf-sdk/include/windows-desktop-x64",
+		EXTERNAL .. "perf-sdk/NvPerfUtility/include",
+		EXTERNAL .. "vulkan/Include"
 	}
    	 
 	if os.host() == "windows" then
@@ -104,7 +175,7 @@ workspace "streamline"
 
 	-- when building any visual studio project
 	filter {"system:windows", "action:vs*"}
-		flags { "MultiProcessorCompile", "NoMinimalRebuild"}		
+		flags { "MultiProcessorCompile", "NoMinimalRebuild"}
 		
 	flags { "FatalWarnings" }
 	-- Enable additional warnings: https://premake.github.io/docs/warnings
@@ -114,7 +185,13 @@ workspace "streamline"
 	cppdialect "C++20"
 	
 	filter "configurations:Debug"
-		defines { "DEBUG", "_DEBUG", "SL_ENABLE_TIMING=1", "SL_DEBUG" }
+		defines { "DEBUG", "SL_ENABLE_TIMING=1", "SL_DEBUG" }
+		if _OPTIONS["use-debug-runtime"] then
+			defines { "_DEBUG" }
+			runtime "Debug"
+		else
+			runtime "Release"
+		end
 		symbols "Full"
 				
 	filter "configurations:Develop"
@@ -129,29 +206,31 @@ workspace "streamline"
 
 	filter { "files:**.hlsl" }
 		buildmessage 'Compiling shader %{file.relpath} to DXBC/SPIRV with slang'
-        buildcommands {				
-			path.translate("../../external/slang/bin/windows-x64/release/")..'slangc "%{file.relpath}" -entry main -target spirv -o "../../_artifacts/shaders/%{file.basename}.spv"',
-			path.translate("../../external/slang/bin/windows-x64/release/")..'slangc "%{file.relpath}" -profile sm_5_0 -entry main -target dxbc -o "../../_artifacts/shaders/%{file.basename}.cs"',
-			'pushd '..path.translate("../../_artifacts/shaders"),
-			'powershell.exe -NoProfile -ExecutionPolicy Bypass '..path.translate("../../tools/")..'bin2cheader.ps1 -i "%{file.basename}.spv"  > "%{file.basename}_spv.h"',
-			'powershell.exe -NoProfile -ExecutionPolicy Bypass '..path.translate("../../tools/")..'bin2cheader.ps1 -i "%{file.basename}.cs"  > "%{file.basename}_cs.h"',
+		local shaders_output = out_dir() .. "shaders/"
+        buildcommands {
+			path.translate(EXTERNAL .. "slang/bin/windows-x64/release/") .. 'slangc "%{file.relpath}" -entry main -target spirv -o "' .. shaders_output .. '%{file.basename}.spv"',
+			path.translate(EXTERNAL .. "slang/bin/windows-x64/release/") .. 'slangc "%{file.relpath}" -profile sm_5_0 -entry main -target dxbc -o "' .. shaders_output .. '%{file.basename}.cs"',
+			'pushd ' .. path.translate(shaders_output),
+			'powershell.exe -NoProfile -ExecutionPolicy Bypass ' .. path.translate(TOOLS) .. 'bin2cheader.ps1 -i "%{file.basename}.spv" > "%{file.basename}_spv.h"',
+			'powershell.exe -NoProfile -ExecutionPolicy Bypass ' .. path.translate(TOOLS) .. 'bin2cheader.ps1 -i "%{file.basename}.cs" > "%{file.basename}_cs.h"',
 			'popd'
-		 }	  
+		 }
 		 -- One or more outputs resulting from the build (required)
-		 buildoutputs { ROOT .. "_artifacts/shaders/%{file.basename}.spv", ROOT .. "_artifacts/shaders/%{file.basename}.cs" }	  
+		 buildoutputs { shaders_output .. "%{file.basename}.spv", shaders_output .. "%{file.basename}.cs" }
 		 -- One or more additional dependencies for this build command (optional)
 		 --buildinputs { 'path/to/file1.ext', 'path/to/file2.ext' }
 	
 	filter { "files:**.json" }
 		buildmessage 'Compiling %{file.relpath} to %{file.basename}_json.h'
+		local json_output = out_dir() .. "json/"
 		buildcommands {
-			'copy "%{file.relpath}" "../../_artifacts/json/%{file.name}"',
-			'pushd '..path.translate("../../_artifacts/json"),
-			'powershell.exe -NoProfile -ExecutionPolicy Bypass '..path.translate("../../tools/")..'bin2cheader.ps1 -i "%{file.basename}.json"  > "../../_artifacts/json/%{file.basename}_json.h"',
+			'copy "%{file.relpath}" "' .. json_output .. '%{file.name}"',
+			'pushd ' .. path.translate(json_output),
+			'powershell.exe -NoProfile -ExecutionPolicy Bypass ' .. path.translate(TOOLS) .. 'bin2cheader.ps1 -i "%{file.basename}.json" > "' .. json_output .. '%{file.basename}_json.h"',
 			'popd'
 		}
 		-- One or more outputs resulting from the build (required)
-		buildoutputs { ROOT .. "_artifacts/json/%{file.basename}.json"}	  
+		buildoutputs { json_output .. "%{file.basename}.json"}
 		-- One or more additional dependencies for this build command (optional)
 		-- buildinputs { 'path/to/file1.ext', 'path/to/file2.ext' }
 
@@ -163,25 +242,27 @@ workspace "streamline"
 
 group ""
 
+
 group "core"
 
 project "sl.interposer"
-	kind "SharedLib"		
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	kind "SharedLib"
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	staticruntime "off"
 	
 	if os.host() == "windows" then
-		prebuildcommands { 'pushd '..path.translate("../../_artifacts"), path.translate("../tools/").."gitVersion.bat", 'popd' }
+		prebuildcommands { 'pushd ' .. path.translate(out_dir()), path.translate(TOOLS) .. "gitVersion.bat", 'popd' }
 	else
-		prebuildcommands { 'pushd '..path.translate("../../_artifacts"), path.translate("../tools/").."gitVersion.sh", 'popd' }
+		prebuildcommands { 'pushd ' .. path.translate(out_dir()), path.translate(TOOLS) .. "gitVersion.sh", 'popd' }
 	end
 
 	
-	filter "platforms:x64"
+	filter { filter_platforms }
 		includedirs { "./external/nvapi" }
 	filter{}
+
 
 	defines {"SL_INTERPOSER"}
 
@@ -211,7 +292,6 @@ project "sl.interposer"
 	vpaths { ["proxies/vulkan"] = {"./source/core/sl.interposer/vulkan/**.h", "./source/core/sl.interposer/vulkan/**.cpp" }}
 	vpaths { ["hook"] = {"./source/core/sl.interposer/hook**"}}
 
-
 	files {
 		"./include/**.h",
 		"./source/core/sl.api/**.h",
@@ -225,17 +305,19 @@ project "sl.interposer"
 		"./source/core/sl.security/**.h",
 		"./source/core/sl.security/**.cpp",
 		"./source/core/sl.plugin-manager/**.h",
-		"./source/core/sl.plugin-manager/**.cpp",		
+		"./source/core/sl.plugin-manager/**.cpp",
 		"./source/core/sl.plugin/inter_plugin_communication.h",
 	}
+
 
 	if os.host() == "windows" then
 		defines {"VK_USE_PLATFORM_WIN32_KHR", "SL_ENABLE_EXCEPTION_HANDLING"}
 		vpaths { ["security"] = {"./source/security/**.h","./source/security/**.cpp"}}
 
 		links {"dbghelp.lib"}
-		filter "platforms:x64"
-			links {"external/nvapi/amd64/nvapi64.lib"}
+
+		filter { filter_platforms }
+			links {EXTERNAL .. "nvapi/amd64/nvapi64.lib"}
 		filter{}
 	end
 	
@@ -243,14 +325,14 @@ project "sl.interposer"
 	vpaths { ["api"] = {"./source/core/sl.api/**.h","./source/core/sl.api/**.cpp"}}
 	vpaths { ["include"] = {"./include/**.h"}}
 	vpaths { ["log"] = {"./source/core/sl.log/**.h","./source/core/sl.log/**.cpp"}}
-	vpaths { ["exception"] = {"./source/core/sl.exception/**.h","./source/core/sl.exception/**.cpp"}}	
+	vpaths { ["exception"] = {"./source/core/sl.exception/**.h","./source/core/sl.exception/**.cpp"}}
 	vpaths { ["params"] = {"./source/core/sl.param/**.h","./source/core/sl.param/**.cpp"}}
 	vpaths { ["security"] = {"./source/core/sl.security/**.h","./source/core/sl.security/**.cpp"}}
 	vpaths { ["version"] = {"./source/core/sl.interposer/versions.h","./source/core/sl.interposer/resource.h","./source/core/sl.interposer/**.rc"}}
 	vpaths { ["plugin"] = {"./source/core/sl.plugin/inter_plugin_communication.h",}}
 
-	removefiles 
-	{ 	
+	removefiles
+	{
 		"./source/core/sl.plugin-manager/pluginManagerEntry.cpp","./source/core/sl.api/plugin-manager.h"
 	}
    
@@ -261,20 +343,20 @@ group ""
 group "platforms"
 
 project "sl.compute"
-	kind "StaticLib"	
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	kind "StaticLib"
+	targetdir (out_static_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	staticruntime "off"
 	dependson { "sl.interposer"}
 
 
-	filter "platforms:x64"
+	filter { filter_platforms }
 		includedirs { "./external/nvapi" }
 	filter{}
 
 	if os.host() == "windows" then
-		if (os.isfile("./external/slang/bin/windows-x64/release/slangc.exe")) then
+		if (os.isfile(EXTERNAL .. "slang/bin/windows-x64/release/slangc.exe")) then
 		files {
 			"./shaders/**.hlsl"
 		}
@@ -283,7 +365,7 @@ project "sl.compute"
 			"./source/platforms/sl.chi/capture.h",
 			"./source/platforms/sl.chi/capture.cpp",
 			"./source/platforms/sl.chi/compute.h",
-			"./source/platforms/sl.chi/generic.h",		
+			"./source/platforms/sl.chi/generic.h",
 			"./source/platforms/sl.chi/d3d12.cpp",
 			"./source/platforms/sl.chi/d3d12.h",
 			"./source/platforms/sl.chi/d3d11.cpp",
@@ -304,7 +386,7 @@ project "sl.compute"
 			"./source/platforms/sl.chi/capture.h",
 			"./source/platforms/sl.chi/capture.cpp",
 			"./source/platforms/sl.chi/compute.h",
-			"./source/platforms/sl.chi/generic.h",		
+			"./source/platforms/sl.chi/generic.h",
 			"./source/platforms/sl.chi/vulkan.cpp",
 			"./source/platforms/sl.chi/vulkan.h",
 			"./source/platforms/sl.chi/generic.cpp"	
@@ -320,41 +402,43 @@ group "plugins"
 
 function pluginBasicSetup(name)
 
-	filter "platforms:x64"
+	filter { filter_platforms }
 		includedirs { "./external/nvapi" }
 	filter{}
 
+	implibdir (out_static_lib_dir())
+	symbolspath (out_symbols_dir() .. "%{cfg.buildtarget.basename}.pdb")
 	files { 
 		"./source/core/sl.api/**.h",
-		"./source/core/sl.log/**.h",		
-		"./source/core/sl.ota/**.h",		
+		"./source/core/sl.log/**.h",
+		"./source/core/sl.ota/**.h",
 		"./source/core/sl.security/**.h",
 		"./source/core/sl.security/**.cpp",
 		"./source/core/sl.file/**.h",
 		"./source/core/sl.file/**.cpp",
-		"./source/core/sl.extra/**.h",		
+		"./source/core/sl.extra/**.h",
 		"./source/core/sl.plugin/**.h",
 		"./source/core/sl.plugin/**.cpp",
-		"./source/plugins/sl."..name.."/versions.h",
-		"./source/plugins/sl."..name.."/resource.h",
-		"./source/plugins/sl."..name.."/**.rc"
+		"./source/plugins/sl." .. name .. "/versions.h",
+		"./source/plugins/sl." .. name .. "/resource.h",
+		"./source/plugins/sl." .. name .. "/**.rc"
 	}
 	removefiles {"./source/core/sl.api/plugin-manager.h"}
 	
 	vpaths { ["api"] = {"./source/core/sl.api/**.h"}}
 	vpaths { ["log"] = {"./source/core/sl.log/**.h","./source/core/sl.log/**.cpp"}}
-	vpaths { ["ota"] = {"./source/core/sl.ota/**.h", "./source/core/sl.ota/**.cpp"}}	
-	vpaths { ["file"] = {"./source/core/sl.file/**.h", "./source/core/sl.file/**.cpp"}}	
-	vpaths { ["extra"] = {"./source/core/sl.extra/**.h", "./source/core/sl.extra/**.cpp"}}		
+	vpaths { ["ota"] = {"./source/core/sl.ota/**.h", "./source/core/sl.ota/**.cpp"}}
+	vpaths { ["file"] = {"./source/core/sl.file/**.h", "./source/core/sl.file/**.cpp"}}
+	vpaths { ["extra"] = {"./source/core/sl.extra/**.h", "./source/core/sl.extra/**.cpp"}}
 	vpaths { ["plugin"] = {"./source/core/sl.plugin/**.h","./source/core/sl.plugin/**.cpp"}}
 	vpaths { ["security"] = {"./source/core/sl.security/**.h","./source/core/sl.security/**.cpp"}}
-	vpaths { ["version"] = {"./source/plugins/sl."..name.."/resource.h","./source/plugins/sl."..name.."/versions.h","./source/plugins/sl."..name.."/**.rc"}}
+	vpaths { ["version"] = {"./source/plugins/sl." .. name .. "/resource.h","./source/plugins/sl." .. name .. "/versions.h","./source/plugins/sl." .. name .. "/**.rc"}}
 end
 
 project "sl.common"
-	kind "SharedLib"	
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	kind "SharedLib"
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	dependson { "sl.compute"}
 
@@ -363,31 +447,37 @@ project "sl.common"
 	defines {"SL_COMMON_PLUGIN"}
 
 	files { 
-		"./source/core/sl.extra/**.cpp",		
+		"./source/core/sl.extra/**.cpp",
 		"./source/plugins/sl.common/**.json",
 		"./source/plugins/sl.common/**.h", 
 		"./source/plugins/sl.common/**.cpp",
 		"./source/core/ngx/**.h",
-		"./source/core/ngx/**.cpp",		
+		"./source/core/ngx/**.cpp",
 		"./source/core/sl.ota/**.cpp",
 	}
 
-	vpaths { ["imgui"] = {"./external/imgui/**.cpp" }}
+	vpaths { ["imgui"] = {EXTERNAL .. "imgui/**.cpp" }}
 	vpaths { ["impl"] = {"./source/plugins/sl.common/**.h", "./source/plugins/sl.common/**.cpp" }}
 	--vpaths { ["ngx"] = {"./source/core/ngx/**.h", "./source/core/ngx/**.cpp"}}
-	
-	filter "platforms:x64"
-		libdirs {externaldir .."nvapi/amd64",externaldir .."ngx-sdk/Lib/Windows_x86_64", externaldir .."pix/bin", externaldir .."reflex-sdk-vk/lib"}
+
+	filter { filter_platforms }
+		libdirs {EXTERNAL .. "nvapi/amd64", EXTERNAL .. "ngx-sdk/Lib/Windows_x86_64", EXTERNAL .. "pix/bin", EXTERNAL .. "reflex-sdk-vk/lib"}
 		links { "nvapi64.lib" }
 	filter{}
     links
     {     
-		"delayimp.lib", "d3d12.lib", "dxgi.lib", "dxguid.lib", (ROOT .. "_artifacts/sl.compute/%{cfg.buildcfg}_%{cfg.platform}/sl.compute.lib"),
+		"delayimp.lib", "d3d12.lib", "dxgi.lib", "dxguid.lib", (out_static_lib_dir("sl.compute") .. "sl.compute.lib"),
 		"Version.lib"
 	}
 
-    filter "configurations:Debug"
-	 	links { "nvsdk_ngx_d_dbg.lib" }
+	-- Release and debug runtimes are not compatible, so we always build against
+	-- the release runtime.
+	filter "configurations:Debug"
+		if _OPTIONS["use-debug-runtime"] then
+			links { "nvsdk_ngx_d_dbg.lib" }
+		else
+			links { "nvsdk_ngx_d.lib"}
+		end
 	filter "configurations:Develop or Production"
 		links { "nvsdk_ngx_d.lib"}
 	filter {}
@@ -401,8 +491,8 @@ project "sl.common"
 if (os.isdir("./source/plugins/sl.dlss_g")) then
 	project "sl.dlss_g"
 		kind "SharedLib"	
-		targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-		objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+		targetdir (out_dynamic_lib_dir())
+		objdir (out_obj_dir())
 		characterset ("MBCS")
 		dependson { "sl.common"}
 		pluginBasicSetup("dlss_g")
@@ -413,7 +503,10 @@ if (os.isdir("./source/plugins/sl.dlss_g")) then
 			"./source/plugins/sl.dlss_g/**.cpp",
 		}
 
-		links {"external/nvapi/amd64/nvapi64.lib", "Winmm.lib", "Version.lib" }
+		links { "Winmm.lib", "Version.lib" }
+		filter { filter_platforms }
+			links {EXTERNAL .. "nvapi/amd64/nvapi64.lib"}
+		filter{}
 
 		vpaths {["impl"] = { "./source/plugins/sl.dlss_g/**.h", "./source/plugins/sl.dlss_g/**.cpp" }}
 		
@@ -422,15 +515,15 @@ end
 
 project "sl.dlss"
 	kind "SharedLib"	
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	dependson { "sl.common"}
 	pluginBasicSetup("dlss")
 	
 	files { 
 		"./source/core/ngx/**.h",
-		"./source/core/ngx/**.cpp",		
+		"./source/core/ngx/**.cpp",
 		"./source/plugins/sl.dlss/**.json",
 		"./source/plugins/sl.dlss/**.h",
 		"./source/plugins/sl.dlss/**.cpp"
@@ -444,8 +537,8 @@ project "sl.dlss"
 
 project "sl.reflex"
 	kind "SharedLib"	
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	pluginBasicSetup("reflex")
 	
@@ -461,8 +554,8 @@ project "sl.reflex"
 
 project "sl.pcl"
 	kind "SharedLib"
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	pluginBasicSetup("pcl")
 	
@@ -479,8 +572,8 @@ project "sl.pcl"
    	
 project "sl.template"
 	kind "SharedLib"	
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	pluginBasicSetup("template")
 	
@@ -496,8 +589,8 @@ project "sl.template"
 	
 project "sl.nis"
 	kind "SharedLib"
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	dependson { "sl.compute"}
 	dependson { "sl.common"}
@@ -513,11 +606,10 @@ project "sl.nis"
 
 	removefiles {"./source/core/sl.extra/extra.cpp"}
 
-if nvcfg.SL_BUILD_DEEPDVC then
 project "sl.deepdvc"
 	kind "SharedLib"
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	dependson { "sl.compute"}
 	dependson { "sl.common"}
@@ -535,12 +627,11 @@ project "sl.deepdvc"
 	vpaths { ["ngx"] = {"./source/core/ngx/**.h", "./source/core/ngx/**.cpp"}}
 
 	removefiles {"./source/core/sl.extra/extra.cpp"}
-end
 
 project "sl.imgui"
 	kind "SharedLib"
-	targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
+	targetdir (out_dynamic_lib_dir())
+	objdir (out_obj_dir())
 	characterset ("MBCS")
 	dependson { "sl.compute"}	
 	pluginBasicSetup("imgui")
@@ -549,15 +640,15 @@ project "sl.imgui"
 		"./source/plugins/sl.imgui/**.json",
 		"./source/plugins/sl.imgui/**.h",
 		"./source/plugins/sl.imgui/**.cpp",
-		"./external/imgui/imgui*.cpp",
-		"./external/implot/*.h",
-		"./external/implot/*.cpp"
+		EXTERNAL .. "imgui/imgui*.cpp",
+		EXTERNAL .. "implot/*.h",
+		EXTERNAL .. "implot/*.cpp"
 	}
 
 	vpaths { ["helpers"] = {"./source/plugins/sl.imgui/imgui_impl**"}}
 	vpaths { ["impl"] = {"./source/plugins/sl.imgui/**.h", "./source/plugins/sl.imgui/**.cpp" }}
-	vpaths { ["implot"] = {"./external/implot/*.h", "./external/implot/*.cpp"}}
-	vpaths { ["imgui"] = {"./external/imgui/**.cpp" }}
+	vpaths { ["implot"] = {EXTERNAL .. "implot/*.h", EXTERNAL .. "implot/*.cpp"}}
+	vpaths { ["imgui"] = {EXTERNAL .. "imgui/**.cpp" }}
 	
 	defines {"ImDrawIdx=unsigned int"}
 
@@ -567,15 +658,16 @@ project "sl.imgui"
 	
 	removefiles {"./source/core/sl.extra/extra.cpp"}
 
-	libdirs {externaldir .."vulkan/Lib"}
+
+	libdirs {EXTERNAL .."vulkan/Lib"}
 
 	links { "d3d12.lib", "vulkan-1.lib"}
 	
 if nvcfg.SL_BUILD_DLSS_DN then
     project "sl.dlss_d"
 	    kind "SharedLib"
-	    targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-	    objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+	    targetdir (out_dynamic_lib_dir())
+	    objdir (out_obj_dir())
 	    characterset ("MBCS")
 	    dependson { "sl.common"}
 	    pluginBasicSetup("dlss_d")
@@ -593,6 +685,7 @@ if nvcfg.SL_BUILD_DLSS_DN then
 
 	    removefiles {"./source/core/sl.extra/extra.cpp"}
 end
+
 
 if nvcfg.SL_BUILD_DIRECTSR then
     project "sl.directsr"
@@ -617,8 +710,8 @@ end
 if (os.isdir("./source/plugins/sl.nvperf")) then
 	project "sl.nvperf"
 		kind "SharedLib"	
-		targetdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}")
-		objdir (ROOT .. "_artifacts/%{prj.name}/%{cfg.buildcfg}_%{cfg.platform}") 
+		targetdir (out_dynamic_lib_dir())
+		objdir (out_obj_dir())
 		characterset ("MBCS")
 		dependson { "sl.imgui"}
 		pluginBasicSetup("nvperf")
@@ -637,7 +730,7 @@ if (os.isdir("./source/plugins/sl.nvperf")) then
 				
 		removefiles {"./source/core/sl.extra/extra.cpp"}
 		
-		libdirs {externaldir .."vulkan/Lib"}
+		libdirs {EXTERNAL .."vulkan/Lib"}
 
 		links { "d3d12.lib", "vulkan-1.lib"}
 end

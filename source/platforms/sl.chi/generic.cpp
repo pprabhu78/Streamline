@@ -75,6 +75,7 @@ const char *GFORMAT_STR[] = {
     "eFormatD32S32",
     "eFormatD24S8",
     "eFormatD32S8U",
+    "eFormatRGBA8SN",
 }; static_assert(countof(GFORMAT_STR) == sl::chi::eFormatCOUNT, "Not enough strings for eFormatCOUNT");
 
 #define SL_TEXT_BUFFER_SIZE 16384
@@ -84,6 +85,38 @@ namespace sl
 
 namespace chi
 {
+
+ScopedProfilingSection::ScopedProfilingSection(ICompute* compute, CommandList cmdList, const char* function, sl::Feature feature)
+    : ScopedProfilingSection(compute, cmdList)
+{
+#if SL_ENABLE_PROFILING
+    std::stringstream str;
+    str << function << " " << getFeatureAsStr(feature);
+    m_compute->beginProfiling(m_cmdList, 0, str.str().c_str());
+#endif
+}
+
+ ScopedProfilingSection::ScopedProfilingSection(ICompute* compute, CommandList cmdList, const char* function, const sl::ResourceTag* resources, uint32_t numResources) : ScopedProfilingSection(compute, cmdList)
+{
+#if SL_ENABLE_PROFILING
+    std::string marker;
+
+    std::stringstream str;
+    str << function << " ";
+
+    for (uint32_t i = 0; i < numResources; ++i)
+    {
+        str << getBufferTypeAsStr(resources[i].type);
+        
+        if (i + 1 != numResources)
+        {
+            str << ", ";
+        }
+    }
+    m_compute->beginProfiling(m_cmdList, 0, str.str().c_str());
+    #endif
+}
+
 
 #define SL_DEBUG_RESOURCE_POOL 0
 
@@ -398,15 +431,19 @@ ComputeStatus Generic::startTrackingResource(uint64_t uid, Resource resource)
 
 ComputeStatus Generic::startTrackingResource(uint32_t frameId, uint64_t uid, Resource resource)
 {
-    // Make sure we are thread safe
-    std::scoped_lock lock(m_mutexResourceTrack);
-
     if (resource != nullptr && resource->native != nullptr)
     {
+        // Make sure we are thread safe
+        std::scoped_lock lock(m_mutexResourceTrack);
+        
         // NOTE: This covers d3d11/d3d12, VK currently does NOP here
         auto cachedResource = (IUnknown*)(resource->native);
         auto refCount = cachedResource->AddRef();
         m_frameResourceTrackingMap[frameId][uid] = cachedResource;
+
+        // frames must be deleted from this map, otherwise it would grow infinitely
+        constexpr uint32_t InsaneNumberOfFramesInFlight = 30;
+        assert(m_frameResourceTrackingMap.size() < InsaneNumberOfFramesInFlight);
         //std::wstring name = getDebugName(cachedResource);
         //SL_LOG_VERBOSE("Start tracking 0x%llx '%S' ref count %d", cachedResource, name.c_str(), refCount);
     }
@@ -942,7 +979,8 @@ ComputeStatus Generic::getBytesPerPixel(Format InFormat, size_t& size)
         8,                      // eFormatRG32UI,
         8,                      // eFormatD32S32,
         4,                      // eFormatD24S8,
-        8,                      // eFormatD32S8U 
+        8,                      // eFormatD32S8U,
+        sizeof(uint32_t),       // eFormatRGBA8SN,
     }; static_assert(countof(BYTES_PER_PIXEL_TABLE) == eFormatCOUNT, "Not enough numbers for eFormatCOUNT");
 
     size = BYTES_PER_PIXEL_TABLE[InFormat];
@@ -1008,6 +1046,7 @@ ComputeStatus Generic::getNativeFormat(Format format, NativeFormat& native)
         case eFormatRG8UN: native = DXGI_FORMAT_R8G8_UNORM; break;
         case eFormatRGB10A2UN: native = DXGI_FORMAT_R10G10B10A2_UNORM; break;
         case eFormatRGBA8UN: native = DXGI_FORMAT_R8G8B8A8_UNORM; break;
+        case eFormatRGBA8SN: native = DXGI_FORMAT_R8G8B8A8_SNORM; break;
         case eFormatBGRA8UN: native = DXGI_FORMAT_B8G8R8A8_UNORM; break;
         case eFormatRGBA32F: native = DXGI_FORMAT_R32G32B32A32_FLOAT; break;
         case eFormatRGB32F:  native = DXGI_FORMAT_R32G32B32_FLOAT; break;
@@ -1063,6 +1102,8 @@ ComputeStatus Generic::getFormat(NativeFormat nativeFmt, Format& format)
     case DXGI_FORMAT_R8G8B8A8_UNORM:
     case DXGI_FORMAT_R8G8B8A8_TYPELESS:
         format = eFormatRGBA8UN; break;
+    case DXGI_FORMAT_R8G8B8A8_SNORM:
+        format = eFormatRGBA8SN; break;
     case DXGI_FORMAT_R32G32B32A32_FLOAT:
     case DXGI_FORMAT_R32G32B32A32_TYPELESS:
         format = eFormatRGBA32F; break;
@@ -1124,6 +1165,7 @@ ComputeStatus Generic::getFormatAsString(const Format format, std::string& name)
         RETURN_STR(eFormatRG8UN);
         RETURN_STR(eFormatRGB10A2UN);
         RETURN_STR(eFormatRGBA8UN);
+        RETURN_STR(eFormatRGBA8SN);
         RETURN_STR(eFormatBGRA8UN);
         RETURN_STR(eFormatRGBA32F);
         RETURN_STR(eFormatRGB32F);

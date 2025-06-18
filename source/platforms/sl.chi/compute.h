@@ -54,7 +54,15 @@ using SubresourceRange = sl::SubresourceRange*;
 using ResourceView = void*;
 using Kernel = size_t;
 using CommandList = void*;
+
+// Vulkan uses two different classes to represent a command queue so
+// to reflect that we have to have two different types here, namely:
+// CommandQueue = VkQueue
+// ChiCommandQueue = CommandQueueVk
+// For D3D CommandQueue and ChiCommandQueue* is the same thing
 using CommandQueue = void*;
+struct ChiCommandQueue;
+
 using CommandAllocator = void*;
 using PipelineState = void*;
 using SwapChain = void*;
@@ -109,6 +117,7 @@ enum Format
     eFormatD32S32,
     eFormatD24S8,
     eFormatD32S8U,
+    eFormatRGBA8SN,
     eFormatCOUNT,
 };
 
@@ -408,7 +417,6 @@ struct ICommandListContext
     virtual void syncGPU(const GPUSyncInfo* info) = 0;
     virtual void waitOnGPUForTheOtherQueue(const ICommandListContext* other, uint32_t clIndex,
         uint64_t syncValue, const DebugInfo &debugInfo) = 0;
-    virtual WaitStatus waitCPUFence(Fence fence, uint64_t syncValue) = 0;
     virtual void waitGPUFence(Fence fence, uint64_t syncValue, const DebugInfo &debugInfo) = 0;
     virtual bool signalGPUFence(Fence fence, uint64_t syncValue) = 0;
     virtual bool signalGPUFenceAt(uint32_t index) = 0;
@@ -604,11 +612,18 @@ public:
     virtual ComputeStatus destroy(std::function<void(void)> task, uint32_t frameDelay = 3) = 0;
 
     virtual uint64_t getCompletedValue(Fence fence) = 0;
+    virtual WaitStatus waitCPUFence(Fence fence, uint64_t syncValue) = 0;
 
-    virtual ComputeStatus createCommandQueue(CommandQueueType type, CommandQueue& queue, const char friendlyName[] = "", uint32_t index = 0) = 0;
-    virtual ComputeStatus destroyCommandQueue(CommandQueue& queue) = 0;
+    virtual ComputeStatus createCommandQueue(CommandQueueType type,
+                                             ChiCommandQueue*& queue,
+                                             const char friendlyName[] = "",
+                                             uint32_t index = 0) = 0;
+    virtual ComputeStatus destroyCommandQueue(ChiCommandQueue* queue) = 0;
 
-    virtual ComputeStatus createCommandListContext(CommandQueue queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[] = "") = 0;
+    virtual ComputeStatus createCommandListContext(ChiCommandQueue* queue,
+                                                   uint32_t count,
+                                                   ICommandListContext*& ctx,
+                                                   const char friendlyName[] = "") = 0;
     virtual ComputeStatus destroyCommandListContext(ICommandListContext* ctx) = 0;
 
     virtual ComputeStatus pushState(CommandList cmdList) = 0;
@@ -696,13 +711,16 @@ public:
     virtual ComputeStatus getLatencyReport(ReflexState& settings) = 0;
     virtual ComputeStatus sleep() = 0;
     virtual ComputeStatus setReflexMarker(PCLMarker marker, uint64_t frameId) = 0;
-    virtual ComputeStatus notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type) = 0;
+    virtual ComputeStatus notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type) = 0;
     virtual ComputeStatus setAsyncFrameMarker(CommandQueue queue, PCLMarker marker, uint64_t frameId) = 0;
     virtual ComputeStatus setLatencyMarker(CommandQueue queue, PCLMarker marker, uint64_t frameId) = 0;
     
     // Sharing API
     virtual ComputeStatus fetchTranslatedResourceFromCache(ICompute* otherAPI, ResourceType type, Resource res, TranslatedResource& shared, const char friendlyName[] = "") = 0;
     virtual ComputeStatus prepareTranslatedResources(CommandList cmdList, const std::vector<std::pair<chi::TranslatedResource, chi::ResourceDescription>>& resourceList) = 0;
+    virtual ComputeStatus createSharedHandle(Resource res, Handle& handle) = 0;
+    virtual ComputeStatus destroySharedHandle(Handle& handle)  = 0;
+    virtual ComputeStatus getResourceFromSharedHandle(ResourceType type, Handle handle, Resource& res)  = 0;
 
     // Resource pool
     virtual ComputeStatus createResourcePool(IResourcePool** pool, const char* vramSegment) = 0;
@@ -713,6 +731,35 @@ public:
 
     // check if an extension is available, vulkan only
     virtual ComputeStatus isDeviceExtensionSupported(const char* extension, uint32_t version) = 0;
+};
+
+
+class  ScopedProfilingSection
+{
+    CommandList m_cmdList;
+    ICompute* m_compute;
+
+    ScopedProfilingSection(ICompute* compute, CommandList cmdList)
+        : m_cmdList(cmdList), m_compute(compute)
+    {
+    }
+
+  public:
+
+    ScopedProfilingSection(ICompute* compute, CommandList cmdList, const char* marker) 
+        : ScopedProfilingSection(compute, cmdList)
+    {
+        m_compute->beginProfiling(m_cmdList, 0, marker);
+    }
+
+    // those are in generic.cpp since they use sl_helpers to stringify some of the arguments
+    ScopedProfilingSection(ICompute* compute, CommandList cmdList, const char* function, sl::Feature feature);
+    ScopedProfilingSection(ICompute* compute, CommandList cmdList, const char* function, const sl::ResourceTag* resources, uint32_t numResources);
+
+    ~ScopedProfilingSection()
+    {  
+        m_compute->endProfiling(m_cmdList);
+    }
 };
 
 ICompute* getD3D11();

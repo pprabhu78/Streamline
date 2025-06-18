@@ -587,48 +587,5 @@ private:
     std::mutex resourceTagMutex{};
 };
 
-struct ProtectedResourceTagContainer
-{
-    std::unordered_map<uint64_t, CommonResource> resourceTagContainer;
-    std::shared_timed_mutex resourceTagContainerMutex{};
-};
-
-struct ResourceTaggingForFrame : public ResourceTaggingBase
-{
-    virtual sl::Result setTag(const sl::Resource* resource,
-        BufferType tag,
-        uint32_t id,
-        const Extent* ext,
-        ResourceLifecycle lifecycle,
-        CommandBuffer* cmdBuffer,
-        bool localTag,
-        const PrecisionInfo* pi,
-        const sl::FrameToken& frame) override final;
-    virtual void getTag(BufferType tagType,
-        uint32_t frameId,
-        uint32_t viewportId,
-        CommonResource& res,
-        const sl::BaseStructure** inputs,
-        uint32_t numInputs,
-        bool optional) override final;
-
-    void recycleTags();
-
-    ~ResourceTaggingForFrame();
-
-private:
-    void recycleTagsInternal(uint32_t currAppFrameIndex);
-    std::atomic<uint32_t> m_nRecyclingThreads = 0;
-    uint32_t m_prevSeenAppFrameIndex = 0;
-
-    std::mutex requiredTagMutex{};
-    // frame-aware nested container of resources for each type of input resource tagged
-    std::map<uint32_t, ProtectedResourceTagContainer> frameResourceTagMap{};
-    std::shared_timed_mutex frameResourceTagMapMutex{};
-    uint32_t maxTagSetFrameId{};
-    std::atomic<uint32_t> presentFrameId{};
-    std::atomic<bool> skippedPresent{ false };
-};
-
 }
 }

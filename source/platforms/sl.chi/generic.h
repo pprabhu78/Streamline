@@ -211,13 +211,30 @@ public:
 
     virtual ComputeStatus getFinishedFrameIndex(uint32_t& index) final override { index = m_finishedFrame; return ComputeStatus::eOk; };
 
-    virtual ComputeStatus createCommandListContext(CommandQueue queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])  override { return ComputeStatus::eNoImplementation; }
+    virtual ComputeStatus createCommandListContext(ChiCommandQueue* queue,
+                                                   uint32_t count,
+                                                   ICommandListContext*& ctx,
+                                                   const char friendlyName[]) override
+    {
+        return ComputeStatus::eNoImplementation;
+    }
     virtual ComputeStatus destroyCommandListContext(ICommandListContext* ctx) override { return ComputeStatus::eNoImplementation; }
 
     virtual uint64_t getCompletedValue(Fence fence) override { /* not implemented */ assert(false); return 0; }
+    virtual WaitStatus waitCPUFence(Fence fence, uint64_t syncValue) override { /* not implemented */ assert(false); return WaitStatus::eError; }
 
-    virtual ComputeStatus createCommandQueue(CommandQueueType type, CommandQueue& queue, const char friendlyName[], uint32_t index) override { return ComputeStatus::eNoImplementation; }
-    virtual ComputeStatus destroyCommandQueue(CommandQueue& queue) override { return ComputeStatus::eNoImplementation; }
+    virtual ComputeStatus createCommandQueue(CommandQueueType type,
+                                             ChiCommandQueue*& queue,
+                                             const char friendlyName[],
+                                             uint32_t index) override
+    {
+        return ComputeStatus::eNoImplementation;
+    }
+
+    virtual ComputeStatus destroyCommandQueue(ChiCommandQueue* queue) override
+    {
+        return ComputeStatus::eNoImplementation;
+    }
     virtual ComputeStatus createFence(FenceFlags flags, uint64_t initialValue, Fence& outFence, const char friendlyName[] = "")  override { return ComputeStatus::eNoImplementation; }
     virtual ComputeStatus destroyFence(Fence& fence) override { SL_SAFE_RELEASE(fence); return ComputeStatus::eOk; }
     virtual ComputeStatus getDebugName(Resource res, std::wstring& name) { name = getDebugName(res); return ComputeStatus::eOk; }

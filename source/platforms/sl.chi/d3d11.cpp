@@ -39,6 +39,13 @@ ICompute *getD3D11()
     return &s_d3d11;
 }
 
+WaitStatus D3D11::waitCPUFence(Fence fence, uint64_t syncValue)
+{
+    assert(false);
+    SL_LOG_ERROR("Not implemented");
+    return WaitStatus::eError;
+}
+
 struct D3D11CommandListContext : public ICommandListContext
 {
     ID3D11DeviceContext4* m_cmdCtxImmediate{};
@@ -91,13 +98,6 @@ struct D3D11CommandListContext : public ICommandListContext
             return false;
         }
         return true;
-    }
-
-    WaitStatus waitCPUFence(Fence fence, uint64_t syncValue)
-    {
-        assert(false);
-        SL_LOG_ERROR("Not implemented");
-        return WaitStatus::eError;
     }
 
     void waitGPUFence(Fence fence, uint64_t syncValue, const DebugInfo &debugInfo) override
@@ -685,7 +685,7 @@ ComputeStatus D3D11::popState(CommandList cmdList)
     return ComputeStatus::eOk;
 }
 
-ComputeStatus D3D11::createCommandListContext(CommandQueue queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])
+ComputeStatus D3D11::createCommandListContext(ChiCommandQueue* queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])
 {
     auto ctx1 = new D3D11CommandListContext();
     ctx1->init(friendlyName, m_device, this);
@@ -703,14 +703,17 @@ ComputeStatus D3D11::destroyCommandListContext(ICommandListContext* ctx)
     return ComputeStatus::eOk;
 }
 
-ComputeStatus D3D11::createCommandQueue(CommandQueueType type, CommandQueue& queue, const char friendlyName[], uint32_t index)
+ComputeStatus D3D11::createCommandQueue(CommandQueueType type,
+                                        ChiCommandQueue*& queue,
+                                        const char friendlyName[],
+                                        uint32_t index)
 {    
-    queue = m_immediateContext;
+    queue = (ChiCommandQueue *)m_immediateContext;
     m_immediateContext->AddRef();
     return ComputeStatus::eOk;
 }
 
-ComputeStatus D3D11::destroyCommandQueue(CommandQueue& queue)
+ComputeStatus D3D11::destroyCommandQueue(ChiCommandQueue* queue)
 {
     if (queue)
     {
@@ -1244,7 +1247,6 @@ ComputeStatus D3D11::createBufferResourceImpl(ResourceDescription &InOutResource
 
 ComputeStatus D3D11::setDebugName(Resource res, const char name[])
 {
-#ifdef SL_DEBUG
     auto unknown = (IUnknown*)(res->native);
     ID3D11DeviceChild* deviceChild{};
     unknown->QueryInterface(&deviceChild);
@@ -1253,7 +1255,6 @@ ComputeStatus D3D11::setDebugName(Resource res, const char name[])
         deviceChild->Release();
         deviceChild->SetPrivateData(WKPDID_D3DDebugObjectName, (UINT)strlen(name), name);
     }
-#endif
     return ComputeStatus::eOk;
 }
 
@@ -1738,7 +1739,7 @@ DXGI_FORMAT D3D11::getCorrectFormat(DXGI_FORMAT Format)
             return Format;
     };
 }
-ComputeStatus D3D11::notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type)
+ComputeStatus D3D11::notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type)
 {
     return ComputeStatus::eOk;
 }

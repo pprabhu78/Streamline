@@ -43,7 +43,7 @@ public:
 	virtual ComputeStatus getReport(ReflexState& settings) = 0;
 	virtual ComputeStatus sleep() = 0;
 	virtual ComputeStatus setMarker(PCLMarker marker, uint64_t frameId) = 0;
-	virtual ComputeStatus notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type) = 0;
+	virtual ComputeStatus notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type) = 0;
 	virtual ComputeStatus setAsyncFrameMarker(CommandQueue queue, PCLMarker marker, uint64_t frameId) = 0;
 };
 

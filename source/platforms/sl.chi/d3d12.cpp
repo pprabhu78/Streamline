@@ -657,29 +657,6 @@ public:
         return true;
     }
 
-    WaitStatus waitCPUFence(Fence fence, uint64_t syncValue)
-    {
-        // This can be called from any thread so make sure not to touch any internals
-        auto d3d12Fence = ((ID3D12Fence*)fence);
-        auto completedValue = d3d12Fence->GetCompletedValue();
-        if (completedValue < syncValue)
-        {
-            if (SUCCEEDED(d3d12Fence->SetEventOnCompletion(syncValue, m_fenceEventExternal)))
-            {
-                if (WaitForSingleObject(m_fenceEventExternal, kMaxSemaphoreWaitMs) == WAIT_TIMEOUT)
-                {
-                    SL_LOG_WARN("Wait on gpu fence in '%S' timed out after 500ms value %llu", m_name.c_str(), syncValue);
-                    return WaitStatus::eTimeout;
-                }
-            }
-            else
-            {
-                return WaitStatus::eError;
-            }
-        }
-        return WaitStatus::eNoTimeout;
-    }
-
     void waitGPUFence(Fence fence, uint64_t syncValue, const DebugInfo &debugInfo) override
     {
         if (FAILED(m_cmdQueue->Wait((ID3D12Fence*)fence, syncValue)))
@@ -1239,7 +1216,7 @@ ComputeStatus D3D12::destroyKernel(Kernel& InKernel)
     return ComputeStatus::eOk;
 }
 
-ComputeStatus D3D12::createCommandListContext(CommandQueue queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])
+ComputeStatus D3D12::createCommandListContext(ChiCommandQueue *queue, uint32_t count, ICommandListContext*& ctx, const char friendlyName[])
 {
     auto tmp = new CommandListContext();
     tmp->init(friendlyName, m_device, (ID3D12CommandQueue*)queue, count);
@@ -1263,7 +1240,33 @@ uint64_t D3D12::getCompletedValue(Fence fence)
     return ((ID3D12Fence*)fence)->GetCompletedValue();
 }
 
-ComputeStatus D3D12::createCommandQueue(CommandQueueType type, CommandQueue& queue, const char friendlyName[], uint32_t index)
+WaitStatus D3D12::waitCPUFence(Fence fence, uint64_t syncValue)
+{
+    // This can be called from any thread so make sure not to touch any internals
+    auto d3d12Fence = ((ID3D12Fence*)fence);
+    auto completedValue = d3d12Fence->GetCompletedValue();
+    WaitStatus status = WaitStatus::eNoTimeout;
+    if (completedValue < syncValue)
+    {
+        HANDLE waitEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (SUCCEEDED(d3d12Fence->SetEventOnCompletion(syncValue, waitEvent)))
+        {
+            if (WaitForSingleObject(waitEvent, kMaxSemaphoreWaitMs) == WAIT_TIMEOUT)
+            {
+                SL_LOG_WARN("Wait on gpu fence timed out after 500ms value %llu", syncValue);
+                status = WaitStatus::eTimeout;
+            }
+        }
+        else
+        {
+            status = WaitStatus::eError;
+        }
+        CloseHandle(waitEvent);
+    }
+    return status;
+}
+
+ComputeStatus D3D12::createCommandQueue(CommandQueueType type, ChiCommandQueue*& queue, const char friendlyName[], uint32_t index)
 {
     D3D12_COMMAND_QUEUE_DESC desc = {};
     desc.Type = type == CommandQueueType::eGraphics ? D3D12_COMMAND_LIST_TYPE_DIRECT : D3D12_COMMAND_LIST_TYPE_COMPUTE;
@@ -1274,13 +1277,13 @@ ComputeStatus D3D12::createCommandQueue(CommandQueueType type, CommandQueue& que
         SL_LOG_ERROR( "Failed to create command queue %s", friendlyName);
         return ComputeStatus::eError;
     }
-    queue = tmp;
+    queue = (ChiCommandQueue *)tmp;
     sl::Resource r(ResourceType::eCommandQueue, queue);
     setDebugName(&r, friendlyName);
     return ComputeStatus::eOk;
 }
 
-ComputeStatus D3D12::destroyCommandQueue(CommandQueue& queue)
+ComputeStatus D3D12::destroyCommandQueue(ChiCommandQueue* queue)
 {
     if (queue)
     {
@@ -1892,8 +1895,11 @@ ComputeStatus D3D12::getSurfaceDriverData(Resource res, ResourceDriverData &data
         }
         
         {
-            auto cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_heap->descriptorHeap[node]->GetCPUDescriptorHandleForHeapStart(), data.descIndex, m_descriptorSize);
-            m_device->CreateUnorderedAccessView(resource, nullptr, &UAVDesc, cpuHandle);
+            auto cpuVisibleCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_heap->descriptorHeapCPU[node]->GetCPUDescriptorHandleForHeapStart(), data.descIndex, m_descriptorSize);
+            m_device->CreateUnorderedAccessView(resource, nullptr, &UAVDesc, cpuVisibleCpuHandle);
+
+            auto gpuVisibleCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_heap->descriptorHeap[node]->GetCPUDescriptorHandleForHeapStart(), data.descIndex, m_descriptorSize);
+            m_device->CopyDescriptorsSimple(1, gpuVisibleCpuHandle, cpuVisibleCpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         }
 
         data.heap = m_heap;
@@ -2019,7 +2025,7 @@ ComputeStatus D3D12::createTexture2DResourceSharedImpl(ResourceDescription &reso
     }
     
     outResource = new sl::Resource(ResourceType::eTex2d, res);
-
+    outResource->state = nativeInitialState;
     return ComputeStatus::eOk;
 }
 
@@ -2081,10 +2087,8 @@ ComputeStatus D3D12::createBufferResourceImpl(ResourceDescription &resourceDesc,
 
 ComputeStatus D3D12::setDebugName(Resource res, const char name[])
 {
-#ifdef SL_DEBUG
     ID3D12Pageable *resource = (ID3D12Pageable*)(res->native);
     resource->SetPrivateData(WKPDID_D3DDebugObjectName, (UINT)strlen(name), name);
-#endif
     return ComputeStatus::eOk;
 }
 
@@ -2709,7 +2713,7 @@ ComputeStatus D3D12::getResourceDescription(Resource resource, ResourceDescripti
     return ComputeStatus::eOk;
 }
 
-ComputeStatus D3D12::notifyOutOfBandCommandQueue(CommandQueue queue, OutOfBandCommandQueueType type)
+ComputeStatus D3D12::notifyOutOfBandCommandQueue(ChiCommandQueue* queue, OutOfBandCommandQueueType type)
 {
     NVAPI_CHECK(NvAPI_D3D12_NotifyOutOfBandCommandQueue((ID3D12CommandQueue*)queue, (NV_OUT_OF_BAND_CQ_TYPE) type));
     return ComputeStatus::eOk;

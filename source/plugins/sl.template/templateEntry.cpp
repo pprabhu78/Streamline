@@ -37,7 +37,6 @@
 #include "_artifacts/json/template_json.h"
 #include "_artifacts/gitVersion.h"
 
-
 using json = nlohmann::json;
 
 //! IMPORTANT: This is our include with our constants and settings (if any)
@@ -438,4 +437,3 @@ SL_EXPORT void* slGetPluginFunction(const char* functionName)
 }
 
 }
-
