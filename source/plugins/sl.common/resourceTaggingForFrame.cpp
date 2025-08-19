@@ -188,12 +188,18 @@ sl::Result common::ResourceTaggingForFrame::setTag(const sl::Resource* resource,
                 // Get tagged resource's state
                 chi::ResourceState state{};
                 m_pCompute->getResourceState(frameTag.res.state, state);
+                // Currently, we are not hitting this code for regular or multi view, for dlss or dlss frame gen, because we have marked our resources as eValidUntilPresent.
+                // But, this fix seems correct as the validation errors get fixed and things seem to work right.
+// ppp: patch: begin
                 // Now store clone's state for further use in SL
-                m_pCompute->getNativeResourceState(chi::ResourceState::eCopyDestination, frameTag.res.state);
+                chi::ResourceState cloneState = frameTag.clone.getState();
+                m_pCompute->getNativeResourceState(cloneState, frameTag.res.state);
                 extra::ScopedTasks revTransitions;
                 chi::ResourceTransition transitions[] = {
                     {actualResource, chi::ResourceState::eCopySource, state},
+                    {frameTag.clone, chi::ResourceState::eCopyDestination, cloneState },
                 };
+// ppp: patch: end
                 CHI_CHECK_RR(m_pCompute->transitionResources(cmdBuffer,
                                                               transitions,
                                                               (uint32_t)countof(transitions),
