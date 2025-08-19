@@ -786,7 +786,9 @@ VkAccessFlags toVkAccessFlags(ResourceState state)
         case ResourceState::eTextureRead: return VK_ACCESS_SHADER_READ_BIT;
         case ResourceState::eStorageRead: return VK_ACCESS_SHADER_READ_BIT;
         case ResourceState::eStorageWrite: return VK_ACCESS_SHADER_WRITE_BIT;
-        case ResourceState::eStorageRW: return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+// ppp: patch: begin: fixes validation errors with vkCmdClearColorImage because that is a transfer operation.
+        case ResourceState::eStorageRW: return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+// ppp: patch: end
         case ResourceState::eColorAttachmentRead: return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
         case ResourceState::eColorAttachmentWrite: return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         case ResourceState::eColorAttachmentRW: return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
@@ -2838,6 +2840,9 @@ ComputeStatus Vulkan::copyResource(CommandList InCmdList, Resource InDstResource
     else
     {
         bool isImageViewForTexture = false, isImageViewTypeStencil = false;
+        // PPP: This is not copying all the array layers (layerCount). 
+        // Currently, we are not hitting this code for regular or multi view, for dlss or dlss frame gen, because we have marked our resources as eValidUntilPresent.
+        // I am also not sure what the right fix is, copy only the 1 layer or all layers for every view for every tag.
         VkImageCopy copyRegion =
         { 
             { toVkAspectFlags(src->nativeFormat, isImageViewForTexture, isImageViewTypeStencil), 0, 0, 1 },
