@@ -2218,6 +2218,80 @@ extern "C"
         return result;
     }
 
+    // ppp: patch: begin
+    VkResult VKAPI_CALL vkGetDeviceGroupPresentCapabilitiesKHR(VkDevice device, VkDeviceGroupPresentCapabilitiesKHR* pDeviceGroupPresentCapabilities)
+    {
+        return s_ddt.GetDeviceGroupPresentCapabilitiesKHR(device, pDeviceGroupPresentCapabilities);
+    }
+
+    VkResult VKAPI_CALL vkGetDeviceGroupSurfacePresentModesKHR(VkDevice device, VkSurfaceKHR surface, VkDeviceGroupPresentModeFlagsKHR* pModes)
+    {
+        return s_ddt.GetDeviceGroupSurfacePresentModesKHR(device, surface, pModes);
+    }
+
+    VkResult VKAPI_CALL vkGetPhysicalDevicePresentRectanglesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t* pRectCount, VkRect2D* pRects)
+    {
+        return s_idt.GetPhysicalDevicePresentRectanglesKHR(physicalDevice, surface, pRectCount, pRects);
+    }
+
+    // not sure this works correctly if the plugin hook is not using the deviceMask in pAcquireInfo. Streamline needs to support this.
+    VkResult VKAPI_CALL vkAcquireNextImage2KHR(VkDevice device, const VkAcquireNextImageInfoKHR* pAcquireInfo, uint32_t* pImageIndex)
+    {
+        bool skip = false;
+        VkResult result = VK_SUCCESS;
+        {
+            const auto& hooks = sl::plugin_manager::getInterface()->getBeforeHooks(sl::FunctionHookID::eVulkan_AcquireNextImageKHR);
+            for (auto [hook, feature] : hooks)
+            {
+                result = ((sl::PFunVkAcquireNextImageKHRBefore*)hook)(device, pAcquireInfo->swapchain, pAcquireInfo->timeout, pAcquireInfo->semaphore, pAcquireInfo->fence, pImageIndex, skip);
+                // report error on first fail
+                if (result != VK_SUCCESS)
+                {
+                    return result;
+                }
+            }
+        }
+
+        if (!skip)
+        {
+            result = s_ddt.AcquireNextImage2KHR(device, pAcquireInfo, pImageIndex);
+        }
+        return result;
+    }
+    // ppp: patch: end
+
+    // ppp: patch: begin
+    VkResult VKAPI_CALL vkGetPhysicalDeviceDisplayPropertiesKHR(VkPhysicalDevice physicalDevice, uint32_t* pPropertyCount, VkDisplayPropertiesKHR* pProperties)
+    {
+        return s_idt.GetPhysicalDeviceDisplayPropertiesKHR(physicalDevice, pPropertyCount, pProperties);
+    }
+    VkResult VKAPI_CALL vkGetPhysicalDeviceDisplayPlanePropertiesKHR(VkPhysicalDevice physicalDevice, uint32_t * pPropertyCount, VkDisplayPlanePropertiesKHR * pProperties)
+    {
+        return s_idt.GetPhysicalDeviceDisplayPlanePropertiesKHR(physicalDevice, pPropertyCount, pProperties);
+    }
+    VkResult VKAPI_CALL vkGetDisplayPlaneSupportedDisplaysKHR(VkPhysicalDevice physicalDevice, uint32_t planeIndex, uint32_t * pDisplayCount, VkDisplayKHR * pDisplays)
+    {
+        return s_idt.GetDisplayPlaneSupportedDisplaysKHR(physicalDevice, planeIndex, pDisplayCount, pDisplays);
+    }
+    VkResult VKAPI_CALL vkGetDisplayModePropertiesKHR(VkPhysicalDevice physicalDevice, VkDisplayKHR display, uint32_t * pPropertyCount, VkDisplayModePropertiesKHR * pProperties)
+    {
+        return s_idt.GetDisplayModePropertiesKHR(physicalDevice, display, pPropertyCount, pProperties);
+    }
+    VkResult VKAPI_CALL vkCreateDisplayModeKHR(VkPhysicalDevice physicalDevice, VkDisplayKHR display, const VkDisplayModeCreateInfoKHR * pCreateInfo, const VkAllocationCallbacks * pAllocator, VkDisplayModeKHR * pMode)
+    {
+        return s_idt.CreateDisplayModeKHR(physicalDevice, display, pCreateInfo, pAllocator, pMode);
+    }
+    VkResult VKAPI_CALL vkGetDisplayPlaneCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkDisplayModeKHR mode, uint32_t planeIndex, VkDisplayPlaneCapabilitiesKHR * pCapabilities)
+    {
+        return s_idt.GetDisplayPlaneCapabilitiesKHR(physicalDevice, mode, planeIndex, pCapabilities);
+    }
+    VkResult VKAPI_CALL vkCreateDisplayPlaneSurfaceKHR(VkInstance instance, const VkDisplaySurfaceCreateInfoKHR * pCreateInfo, const VkAllocationCallbacks * pAllocator, VkSurfaceKHR * pSurface)
+    {
+        return s_idt.CreateDisplayPlaneSurfaceKHR(instance, pCreateInfo, pAllocator, pSurface);
+    }
+    // ppp: patch: end
+
+
     // -- VK_KHR_win32_surface
 
     VkResult VKAPI_CALL vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice PhysicalDevice, VkSurfaceKHR Surface, VkSurfaceCapabilitiesKHR* SurfaceCapabilities)
@@ -2342,6 +2416,7 @@ if (strcmp(pName, #F) == 0)          \
         SL_INTERCEPT(vkGetSwapchainImagesKHR);
         SL_INTERCEPT(vkDestroySwapchainKHR);
         SL_INTERCEPT(vkAcquireNextImageKHR);
+        SL_INTERCEPT(vkAcquireNextImage2KHR);
         SL_INTERCEPT(vkBeginCommandBuffer);
         SL_INTERCEPT(vkDeviceWaitIdle);
 
@@ -2380,6 +2455,7 @@ if (strcmp(pName, #F) == 0)          \
         SL_INTERCEPT(vkDestroySwapchainKHR);
         SL_INTERCEPT(vkGetSwapchainImagesKHR);
         SL_INTERCEPT(vkAcquireNextImageKHR);
+        SL_INTERCEPT(vkAcquireNextImage2KHR);
         SL_INTERCEPT(vkBeginCommandBuffer);
         SL_INTERCEPT(vkDeviceWaitIdle);
 

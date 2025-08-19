@@ -241,6 +241,23 @@ EXPORTS
 	vkGetSwapchainImagesKHR
 	vkAcquireNextImageKHR
 	vkQueuePresentKHR
+	; ppp: patch: begin
+	vkGetDeviceGroupPresentCapabilitiesKHR
+	vkGetDeviceGroupSurfacePresentModesKHR
+	vkGetPhysicalDevicePresentRectanglesKHR
+	vkAcquireNextImage2KHR
+	; ppp: patch: end
+
+	; ppp: patch: begin
+	vkGetPhysicalDeviceDisplayPropertiesKHR
+	vkGetPhysicalDeviceDisplayPlanePropertiesKHR
+	vkGetDisplayPlaneSupportedDisplaysKHR
+	vkGetDisplayModePropertiesKHR
+	vkCreateDisplayModeKHR
+	vkGetDisplayPlaneCapabilitiesKHR
+	vkCreateDisplayPlaneSurfaceKHR
+	; ppp: patch: end
+
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR
 	vkGetPhysicalDeviceSurfaceFormatsKHR
 	vkGetPhysicalDeviceSurfaceSupportKHR

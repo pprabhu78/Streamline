@@ -144,13 +144,28 @@ inline void VkTable::mapVulkanInstanceAPI(VkInstance instance)
     dt.GetPhysicalDeviceSparseImageFormatProperties2KHR = (PFN_vkGetPhysicalDeviceSparseImageFormatProperties2KHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceSparseImageFormatProperties2KHR");
 #endif /* defined(VK_KHR_get_physical_device_properties2) */
 
+// ppp: patch: begin
 #if defined(VK_KHR_surface)
     dt.DestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)getInstanceProcAddr(instance, "vkDestroySurfaceKHR");
     dt.GetPhysicalDeviceSurfaceCapabilitiesKHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
     dt.GetPhysicalDeviceSurfaceFormatsKHR = (PFN_vkGetPhysicalDeviceSurfaceFormatsKHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceFormatsKHR");
     dt.GetPhysicalDeviceSurfacePresentModesKHR = (PFN_vkGetPhysicalDeviceSurfacePresentModesKHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfacePresentModesKHR");
     dt.GetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceSupportKHR");
+    dt.GetPhysicalDevicePresentRectanglesKHR = (PFN_vkGetPhysicalDevicePresentRectanglesKHR)getInstanceProcAddr(instance, "vkGetPhysicalDevicePresentRectanglesKHR");
 #endif /* defined(VK_KHR_surface) */
+// ppp: patch: end
+
+// ppp: patch: begin
+#if defined(VK_KHR_display)
+    dt.GetPhysicalDeviceDisplayPropertiesKHR = (PFN_vkGetPhysicalDeviceDisplayPropertiesKHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceDisplayPropertiesKHR");
+    dt.GetPhysicalDeviceDisplayPlanePropertiesKHR = (PFN_vkGetPhysicalDeviceDisplayPlanePropertiesKHR)getInstanceProcAddr(instance, "vkGetPhysicalDeviceDisplayPlanePropertiesKHR");
+    dt.GetDisplayPlaneSupportedDisplaysKHR = (PFN_vkGetDisplayPlaneSupportedDisplaysKHR)getInstanceProcAddr(instance, "vkGetDisplayPlaneSupportedDisplaysKHR");
+    dt.GetDisplayModePropertiesKHR = (PFN_vkGetDisplayModePropertiesKHR)getInstanceProcAddr(instance, "vkGetDisplayModePropertiesKHR");
+    dt.CreateDisplayModeKHR = (PFN_vkCreateDisplayModeKHR)getInstanceProcAddr(instance, "vkCreateDisplayModeKHR");
+    dt.GetDisplayPlaneCapabilitiesKHR = (PFN_vkGetDisplayPlaneCapabilitiesKHR)getInstanceProcAddr(instance, "vkGetDisplayPlaneCapabilitiesKHR");
+    dt.CreateDisplayPlaneSurfaceKHR = (PFN_vkCreateDisplayPlaneSurfaceKHR)getInstanceProcAddr(instance, "vkCreateDisplayPlaneSurfaceKHR");
+#endif /* defined(VK_KHR_display) */
+// ppp: patch: end
 
 #if defined(VK_KHR_win32_surface)
     dt.CreateWin32SurfaceKHR = (PFN_vkCreateWin32SurfaceKHR)getInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR");
@@ -339,13 +354,18 @@ inline void VkTable::mapVulkanDeviceAPI(VkDevice device)
     dt.DebugMarkerSetObjectTagEXT = (PFN_vkDebugMarkerSetObjectTagEXT)getDeviceProcAddr(device, "vkDebugMarkerSetObjectTagEXT");
 #endif /* defined(VK_EXT_debug_marker) */
 
+// ppp: patch: begin
 #if defined(VK_KHR_swapchain)
     dt.AcquireNextImageKHR = (PFN_vkAcquireNextImageKHR)getDeviceProcAddr(device, "vkAcquireNextImageKHR");
     dt.CreateSwapchainKHR = (PFN_vkCreateSwapchainKHR)getDeviceProcAddr(device, "vkCreateSwapchainKHR");
     dt.DestroySwapchainKHR = (PFN_vkDestroySwapchainKHR)getDeviceProcAddr(device, "vkDestroySwapchainKHR");
     dt.GetSwapchainImagesKHR = (PFN_vkGetSwapchainImagesKHR)getDeviceProcAddr(device, "vkGetSwapchainImagesKHR");
     dt.QueuePresentKHR = (PFN_vkQueuePresentKHR)getDeviceProcAddr(device, "vkQueuePresentKHR");
+    dt.GetDeviceGroupPresentCapabilitiesKHR = (PFN_vkGetDeviceGroupPresentCapabilitiesKHR)getDeviceProcAddr(device, "vkGetDeviceGroupPresentCapabilitiesKHR");
+    dt.GetDeviceGroupSurfacePresentModesKHR = (PFN_vkGetDeviceGroupSurfacePresentModesKHR)getDeviceProcAddr(device, "vkGetDeviceGroupSurfacePresentModesKHR");
+    dt.AcquireNextImage2KHR = (PFN_vkAcquireNextImage2KHR)getDeviceProcAddr(device, "vkAcquireNextImage2KHR");
 #endif /* defined(VK_KHR_swapchain) */
+// ppp: patch: end
 
 #if defined(VK_KHR_get_memory_requirements2)
     dt.GetBufferMemoryRequirements2KHR = (PFN_vkGetBufferMemoryRequirements2KHR)getDeviceProcAddr(device, "vkGetBufferMemoryRequirements2KHR");
