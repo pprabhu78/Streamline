@@ -1,0 +1,3 @@
+-The files here correspond to dlls for which we don't have the source. 
+-They are shipped with the latest streamline sdk release and reside in the streamline-sdk-v2.8.0.zip\bin\x64 folder
+-We build our own streamline, so we have put these files here, so they can be packaged alongside the sdk we build/package
