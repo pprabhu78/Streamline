@@ -335,6 +335,9 @@ struct Log : ILog
             else
             {
                 message = fmt;
+                // This is stripping things that it shouldn't (e.g. vulkan validation messages are being cut off)
+                // ppp: patch: begin
+#if 0
                 // Message coming from 3rd party (NGX) so remove the time stamp
                 auto p = message.find("]");
                 if (p != std::string::npos)
@@ -345,6 +348,8 @@ struct Log : ILog
                         message = message.substr(p + 1);
                     }
                 }
+#endif
+                // ppp: patch: end
             }
             
             // Filename
