@@ -946,6 +946,86 @@ VkImageUsageFlags toVkImageUsageFlags(ResourceFlags usageFlags)
     return flags;
 }
 
+// ppp: patch: begin
+static bool ignoreVulkanValidationMessage(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData)
+{
+#if 1
+    const char* message = pCallbackData->pMessage;
+    // We don't have access to this plugin code. And Framegen seems to be working fine. So, we will ingore this message
+    if (strstr(message, "command buffer VkCommandBuffer") && strstr(message, "expects VkImage") && strstr(message, "sl.dlssg.fake-swapchain-buffer")
+        && strstr(message, "to be in layout VK_IMAGE_LAYOUT_PRESENT_SRC_KHR--instead, current layout is VK_IMAGE_LAYOUT_GENERAL"))
+    {
+        return true;
+    }
+
+
+    if (strstr(message, "vkCmdClearColorImage(): WRITE_AFTER_WRITE hazard detected. vkCmdClearColorImage writes to VkImage")
+        && strstr(message, "which was previously written during an image layout transition initiated by vkCmdPipelineBarrier")
+        && strstr(message, "The current synchronization allows VK_ACCESS_2_SHADER_READ_BIT|VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT accesses at VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, but to prevent this hazard, it must allow VK_ACCESS_2_TRANSFER_WRITE_BIT accesses at VK_PIPELINE_STAGE_2_CLEAR_BIT.")
+        )
+    {
+        return true;
+    }
+
+    if (strstr(message, "vkCmdCopyImage(): READ_AFTER_WRITE hazard detected. vkCmdCopyImage reads VkImage")
+        && strstr(message, "sl.dlssg.fake-swapchain-buffer")
+        && strstr(message, "which was previously written during an image layout transition initiated by vkCmdPipelineBarrier.")
+        && strstr(message, "The current synchronization allows VK_ACCESS_2_SHADER_READ_BIT|VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT accesses at VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, but to prevent this hazard, it must allow VK_ACCESS_2_TRANSFER_READ_BIT accesses at VK_PIPELINE_STAGE_2_COPY_BIT.")
+        )
+    {
+        return true;
+    }
+
+    if (strstr(message, "vkCmdCopyImage(): WRITE_AFTER_WRITE hazard detected. vkCmdCopyImage writes to VkImage")
+        && strstr(message, "m_pDLFGOutputs")
+        && strstr(message, "which was previously written during an image layout transition initiated by vkCmdPipelineBarrier.")
+        && strstr(message, "The current synchronization allows VK_ACCESS_2_SHADER_READ_BIT|VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT accesses at VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, but to prevent this hazard, it must allow VK_ACCESS_2_TRANSFER_WRITE_BIT accesses at VK_PIPELINE_STAGE_2_COPY_BIT.")
+        )
+    {
+        return true;
+    }
+
+    if (strstr(message, "vkCmdPipelineBarrier(): WRITE_AFTER_WRITE hazard detected. vkCmdPipelineBarrier performs image layout transition on the VkImage")
+        && strstr(message, "which was previously written by vkCmdCopyImage.")
+        && strstr(message, "No sufficient synchronization is present to ensure that a layout transition does not conflict with a prior write (VK_ACCESS_2_TRANSFER_WRITE_BIT) at VK_PIPELINE_STAGE_2_COPY_BIT.")
+        )
+    {
+        return true;
+    }
+
+
+    if (strstr(message, "vkCmdFillBuffer(): WRITE_AFTER_WRITE hazard detected. vkCmdFillBuffer writes to dstBuffer VkBuffer")
+        && strstr(message, "which was previously written by another vkCmdFillBuffer command.")
+        && strstr(message, "No sufficient synchronization is present to ensure that a write (VK_ACCESS_2_TRANSFER_WRITE_BIT) at VK_PIPELINE_STAGE_2_CLEAR_BIT does not conflict with a prior write of the same type at the same stage.")
+        )
+    {
+        return true;
+    }
+
+    if (strstr(message, "vkQueueSubmit(): pSubmits[0].pSignalSemaphores[1]")
+        && strstr(message, "[SL_present_semaphore]) is being signaled by VkQueue")
+        && strstr(message, "but it may still be in use by VkSwapchainKHR")
+        )
+    {
+        return true;
+    }
+
+    if (strstr(message, "dlssg.pacer_command_buffer] expects VkImage")
+        && strstr(message, "m_pDLFGOutputs")
+        && strstr(message, "to be in layout VK_IMAGE_LAYOUT_GENERAL--instead, current layout is VK_IMAGE_LAYOUT_UNDEFINED")
+        )
+    {
+        return true;
+    }
+
+#endif
+
+
+    return false;
+}
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -962,6 +1042,11 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
         //std::string s(pCallbackData->pMessage);
         //std::replace(s.begin(), s.end(), '%', ' ');
         //SL_LOG_WARN(s.c_str());
+
+        if (!ignoreVulkanValidationMessage(messageSeverity, messageType, pCallbackData))
+        {
+            SL_LOG_WARN(pCallbackData->pMessage);
+        }
     }
     else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
         
@@ -973,7 +1058,10 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
         std::vector<uint32_t> s_disable = { 0x3936bc0c, 0xd3c27d87, 0x1608dec0, 0xb50452b0, 0x1e8b83b0, 0xe825f293, 0x3cf4c632, 0x15559cd5 };
         if (std::find(s_disable.begin(), s_disable.end(), pCallbackData->messageIdNumber) == s_disable.end())
         {
-            SL_LOG_ERROR( pCallbackData->pMessage);
+            if (!ignoreVulkanValidationMessage(messageSeverity, messageType, pCallbackData))
+            {
+                SL_LOG_WARN(pCallbackData->pMessage);
+            }
         }
     }
 
@@ -982,6 +1070,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugUtilsMessengerCallback(
     // If you instead want to have calls abort, pass in VK_TRUE and the function will return VK_ERROR_VALIDATION_FAILED_EXT 
     return VK_FALSE;
 }
+// ppp: patch: end
 
 ComputeStatus Vulkan::init(Device device, param::IParameters* params)
 {
